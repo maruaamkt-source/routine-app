@@ -1,6 +1,7 @@
 import { Fraunces, Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/components/AuthProvider";
+import Watermark from "@/components/Watermark";
 
 const fraunces = Fraunces({
   subsets: ["latin"],
@@ -68,6 +69,7 @@ export default function RootLayout({ children }) {
         <div className="relative z-10">
           <AuthProvider>{children}</AuthProvider>
         </div>
+        <Watermark />
       </body>
     </html>
   );
