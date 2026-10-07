@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "./AuthProvider";
+import InstallButton from "./InstallButton";
 
 const LINKS = [
   { href: "/", label: "Hoje" },
@@ -130,6 +131,9 @@ export default function Nav() {
         </div>
 
         <div className="flex flex-col gap-4">
+          <div>
+            <InstallButton />
+          </div>
           <ThemeToggle withLabel />
           <button
             onClick={signOut}
@@ -139,6 +143,11 @@ export default function Nav() {
           </button>
         </div>
       </aside>
+
+      {/* Mobile: botão de instalar flutuante (só aparece se der pra instalar) */}
+      <div className="md:hidden fixed bottom-16 right-4 z-20">
+        <InstallButton />
+      </div>
 
       {/* Mobile bottom nav */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 flex justify-around items-center border-t border-line bg-surface/95 backdrop-blur py-3 z-20">
