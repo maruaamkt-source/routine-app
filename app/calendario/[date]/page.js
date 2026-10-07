@@ -8,14 +8,17 @@ import { useAuth } from "@/components/AuthProvider";
 import Nav from "@/components/Nav";
 import ProgressRing from "@/components/ProgressRing";
 import TaskForm from "@/components/TaskForm";
+import TaskEditor from "@/components/TaskEditor";
 import { toISODate, todayISO, habitAppliesOnISO } from "@/lib/dateUtils";
 import { getRandomQuote } from "@/lib/quotes";
+import { KIND_COLOR, tint } from "@/lib/kindColors";
+import { deleteFutureOccurrences } from "@/lib/taskSeries";
 
 const KIND_STYLE = {
-  tarefa: { label: "Tarefa", plural: "Tarefas", color: "#d9a441" },
-  habito: { label: "Hábito", plural: "Hábitos", color: "#6fae7b" },
-  compromisso: { label: "Compromisso", plural: "Compromissos", color: "#6b8fd6" },
-  lembrete: { label: "Lembrete", plural: "Lembretes", color: "#9a82c9" },
+  tarefa: { label: "Tarefa", plural: "Tarefas", color: KIND_COLOR.tarefa },
+  habito: { label: "Hábito", plural: "Hábitos", color: KIND_COLOR.habito },
+  compromisso: { label: "Compromisso", plural: "Compromissos", color: KIND_COLOR.compromisso },
+  lembrete: { label: "Lembrete", plural: "Lembretes", color: KIND_COLOR.lembrete },
 };
 
 const toMin = (t) => {
@@ -40,6 +43,7 @@ export default function DiaPage() {
   const [logs, setLogs] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [menuKey, setMenuKey] = useState(null);
+  const [editing, setEditing] = useState(null);
 
   const validDate = /^\d{4}-\d{2}-\d{2}$/.test(date ?? "");
 
@@ -83,8 +87,23 @@ export default function DiaPage() {
   }
 
   async function deleteTask(task) {
+    await deleteFutureOccurrences(task);
     const { error } = await supabase.from("tasks").delete().eq("id", task.id);
     if (!error) setTasks((prev) => prev.filter((t) => t.id !== task.id));
+  }
+
+  function handleUpdate(updated) {
+    setTasks((prev) =>
+      prev.map((t) => (t.id === updated.id ? updated : t)).filter((t) => t.due_date === date)
+    );
+    setEditing(null);
+  }
+
+  function handleUpdate(updated) {
+    setTasks((prev) =>
+      prev.map((t) => (t.id === updated.id ? updated : t)).filter((t) => t.due_date === date)
+    );
+    setEditing(null);
   }
 
   async function toggleHabit(habit) {
@@ -112,6 +131,7 @@ export default function DiaPage() {
       done: t.is_completed,
       toggle: () => toggleTask(t),
       remove: () => deleteTask(t),
+      edit: () => setEditing(t),
     }));
     const fromHabits = habits.map((h) => ({
       key: `h-${h.id}`,
@@ -388,7 +408,7 @@ export default function DiaPage() {
                       <span
                         className="block h-6 w-[3px] rounded-full ml-0.5"
                         style={{
-                          backgroundColor: `${KIND_STYLE[covering.kind].color}44`,
+                          backgroundColor: tint(KIND_STYLE[covering.kind].color, 27),
                         }}
                       />
                     ) : (
@@ -402,6 +422,21 @@ export default function DiaPage() {
             })}
           </div>
         </div>
+
+        {editing && (
+          <div
+            className="fixed inset-0 z-40 grid place-items-center bg-ink/70 p-4"
+            onClick={() => setEditing(null)}
+          >
+            <div className="w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+              <TaskEditor
+                task={editing}
+                onSaved={handleUpdate}
+                onCancel={() => setEditing(null)}
+              />
+            </div>
+          </div>
+        )}
 
         {menuKey && (
           <div className="fixed inset-0 z-20" onClick={() => setMenuKey(null)} />
@@ -456,8 +491,8 @@ function Chip({ item }) {
     <div
       className="flex items-center gap-2 rounded-full border pl-1 pr-3 py-1 transition-colors"
       style={{
-        borderColor: `${style.color}${item.done ? "22" : "55"}`,
-        backgroundColor: item.done ? "transparent" : `${style.color}10`,
+        borderColor: tint(style.color, item.done ? 13 : 33),
+        backgroundColor: item.done ? "transparent" : tint(style.color, 6),
       }}
     >
       <button
@@ -465,7 +500,7 @@ function Chip({ item }) {
         aria-label={`${item.done ? "Reabrir" : "Concluir"} ${item.title}`}
         className="shrink-0 grid place-items-center w-6 h-6 rounded-full transition-colors"
         style={{
-          color: item.done ? "#0a0a0a" : style.color,
+          color: item.done ? "rgb(var(--ink))" : style.color,
           backgroundColor: item.done ? style.color : "transparent",
         }}
       >
@@ -503,7 +538,7 @@ function TimelineItem({ item, menuOpen, onMenu, onClose }) {
         style={{
           color: item.done ? "#0a0a0a" : style.color,
           backgroundColor: item.done ? style.color : "transparent",
-          borderColor: `${style.color}66`,
+          borderColor: tint(style.color, 40),
         }}
       >
         <KindIcon kind={item.kind} />
@@ -533,7 +568,18 @@ function TimelineItem({ item, menuOpen, onMenu, onClose }) {
       </button>
 
       {menuOpen && (
-        <div className="absolute right-2 top-11 z-30 w-40 rounded-md border border-line bg-panel py-1 shadow-lg">
+         <div className="absolute right-2 top-11 z-30 w-40 rounded-md border border-line bg-panel py-1 shadow-lg">
+          {item.edit && (
+            <button
+              onClick={() => {
+                item.edit();
+                onClose();
+              }}
+              className="w-full text-left px-3 py-2 text-sm text-bone hover:bg-white/5"
+            >
+              Editar
+            </button>
+          )}
           <button
             onClick={() => {
               item.toggle();

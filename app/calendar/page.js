@@ -106,6 +106,14 @@ export default function CalendarPage() {
     if (!error) setTasks((prev) => prev.filter((t) => t.id !== task.id));
   }
 
+  function handleUpdate(updated) {
+    setTasks((prev) =>
+      prev
+        .map((t) => (t.id === updated.id ? updated : t))
+        .filter((t) => t.due_date >= weekStart && t.due_date <= weekEnd)
+    );
+  }
+
   async function handleToggleHabitToday(habit) {
     const logs = logsByHabit[habit.id] ?? [];
     const todayLog = logs.find((l) => l.date === today);
@@ -238,6 +246,7 @@ export default function CalendarPage() {
                   tasks={selectedTasks}
                   onToggle={handleToggle}
                   onDelete={handleDelete}
+                  onUpdate={handleUpdate}
                 />
               </div>
             )}

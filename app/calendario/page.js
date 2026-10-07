@@ -7,14 +7,15 @@ import { useAuth } from "@/components/AuthProvider";
 import Nav from "@/components/Nav";
 import { toISODate, todayISO, habitAppliesOnISO } from "@/lib/dateUtils";
 import { getRandomQuote } from "@/lib/quotes";
+import { KIND_COLOR } from "@/lib/kindColors";
 
 const WEEKDAYS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 
 const KINDS = [
-  { key: "tarefa", label: "Tarefa", color: "#d9a441" },
-  { key: "habito", label: "Hábito", color: "#6fae7b" },
-  { key: "compromisso", label: "Compromisso", color: "#6b8fd6" },
-  { key: "lembrete", label: "Lembrete", color: "#9a82c9" },
+  { key: "tarefa", label: "Tarefa", color: KIND_COLOR.tarefa },
+  { key: "habito", label: "Hábito", color: KIND_COLOR.habito },
+  { key: "compromisso", label: "Compromisso", color: KIND_COLOR.compromisso },
+  { key: "lembrete", label: "Lembrete", color: KIND_COLOR.lembrete },
 ];
 const COLOR = Object.fromEntries(KINDS.map((k) => [k.key, k.color]));
 

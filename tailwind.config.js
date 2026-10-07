@@ -15,6 +15,7 @@ module.exports = {
         mute: "rgb(var(--mute) / <alpha-value>)",
         ember: "rgb(var(--ember) / <alpha-value>)",
         emberSoft: "rgb(var(--ember) / 0.14)",
+        white: "rgb(var(--bone) / <alpha-value>)",
       },
       fontFamily: {
         display: ["var(--font-fraunces)", "Georgia", "serif"],

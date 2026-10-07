@@ -1,11 +1,17 @@
 "use client";
 
+import { useState } from "react";
+import { deleteFutureOccurrences } from "@/lib/taskSeries";
+import TaskEditor from "@/components/TaskEditor";
+
 const KIND_LABEL = {
   compromisso: "Compromisso",
   lembrete: "Lembrete",
 };
 
-export default function TaskList({ tasks, onToggle, onDelete }) {
+export default function TaskList({ tasks, onToggle, onDelete, onUpdate }) {
+  const [editingId, setEditingId] = useState(null);
+
   if (tasks.length === 0) {
     return (
       <p className="text-sm text-mute py-6">
@@ -22,9 +28,30 @@ export default function TaskList({ tasks, onToggle, onDelete }) {
     return ta.localeCompare(tb);
   });
 
+  async function handleDelete(task) {
+    const removedFuture = await deleteFutureOccurrences(task);
+    await onDelete(task);
+    if (removedFuture) window.location.reload();
+  }
+
   return (
     <ul className="flex flex-col">
       {sorted.map((task) => {
+        if (editingId === task.id) {
+          return (
+            <li key={task.id} className="py-3">
+              <TaskEditor
+                task={task}
+                onCancel={() => setEditingId(null)}
+                onSaved={(updated) => {
+                  onUpdate?.(updated);
+                  setEditingId(null);
+                }}
+              />
+            </li>
+          );
+        }
+
         const start = task.start_time ?? task.due_time;
         const kindLabel = KIND_LABEL[task.kind];
         return (
@@ -56,8 +83,17 @@ export default function TaskList({ tasks, onToggle, onDelete }) {
                 {task.end_time && ` - ${task.end_time.slice(0, 5)}`}
               </span>
             )}
+            {onUpdate && (
+              <button
+                onClick={() => setEditingId(task.id)}
+                className="text-xs text-mute md:opacity-0 md:group-hover:opacity-100 hover:text-bone transition-opacity px-1 py-2"
+                aria-label="Editar tarefa"
+              >
+                Editar
+              </button>
+            )}
             <button
-              onClick={() => onDelete(task)}
+              onClick={() => handleDelete(task)}
               className="text-xs text-mute md:opacity-0 md:group-hover:opacity-100 hover:text-bone transition-opacity px-1 py-2"
               aria-label="Excluir tarefa"
             >

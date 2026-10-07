@@ -1,6 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
+import { useAuth } from "@/components/AuthProvider";
+import { toISODate, WEEKDAY_LABELS } from "@/lib/dateUtils";
 
 const KINDS = [
   { key: "tarefa", label: "Tarefa" },
@@ -8,11 +11,50 @@ const KINDS = [
   { key: "lembrete", label: "Lembrete" },
 ];
 
+const REPEATS = [
+  { key: "none", label: "Não repete" },
+  { key: "daily", label: "Todo dia" },
+  { key: "weekdays", label: "Dias úteis" },
+  { key: "custom", label: "Escolher dias" },
+];
+
+const REPEAT_DAYS_AHEAD = 60;
+
+function newSeriesId() {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
+
+// Datas das repetições (depois do dia escolhido). 0 = segunda, igual aos hábitos.
+function buildRepeatDates(startISO, repeat, customDays) {
+  const dates = [];
+  const start = new Date(`${startISO}T00:00:00`);
+  for (let i = 1; i <= REPEAT_DAYS_AHEAD; i++) {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    const idx = (d.getDay() + 6) % 7;
+    const ok =
+      repeat === "daily" ||
+      (repeat === "weekdays" && idx <= 4) ||
+      (repeat === "custom" && customDays.includes(idx));
+    if (ok) dates.push(toISODate(d));
+  }
+  return dates;
+}
+
 export default function TaskForm({ defaultDate, onCreate, compact = false }) {
+  const { user } = useAuth();
   const [title, setTitle] = useState("");
   const [kind, setKind] = useState("tarefa");
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
+  const [repeat, setRepeat] = useState("none");
+  const [customDays, setCustomDays] = useState([]);
   const [error, setError] = useState("");
   const [open, setOpen] = useState(false);
 
@@ -21,8 +63,17 @@ export default function TaskForm({ defaultDate, onCreate, compact = false }) {
     setKind("tarefa");
     setStartTime("");
     setEndTime("");
+    setRepeat("none");
+    setCustomDays([]);
     setError("");
     setOpen(false);
+  }
+
+  function toggleDay(i) {
+    setCustomDays((prev) =>
+      prev.includes(i) ? prev.filter((d) => d !== i) : [...prev, i]
+    );
+    setError("");
   }
 
   async function handleSubmit(e) {
@@ -36,14 +87,43 @@ export default function TaskForm({ defaultDate, onCreate, compact = false }) {
       setError("O fim precisa ser depois do início.");
       return;
     }
-    await onCreate({
+    if (repeat === "custom" && customDays.length === 0) {
+      setError("Escolha pelo menos um dia da semana.");
+      return;
+    }
+
+    const base = {
       title: title.trim(),
       due_date: defaultDate,
       due_time: startTime || null,
       start_time: startTime || null,
       end_time: endTime || null,
       kind,
-    });
+    };
+
+    const extraDates =
+      repeat === "none" ? [] : buildRepeatDates(defaultDate, repeat, customDays);
+    const seriesId = extraDates.length > 0 ? newSeriesId() : null;
+
+    await onCreate(seriesId ? { ...base, series_id: seriesId } : base);
+
+    if (seriesId && user) {
+      const rows = extraDates.map((d) => ({
+        ...base,
+        due_date: d,
+        series_id: seriesId,
+        user_id: user.id,
+      }));
+      const { error: insertError } = await supabase.from("tasks").insert(rows);
+      if (insertError) {
+        setError("Criei a primeira, mas não consegui criar as repetições.");
+        return;
+      }
+      reset();
+      window.location.reload();
+      return;
+    }
+
     reset();
   }
 
@@ -129,6 +209,57 @@ export default function TaskForm({ defaultDate, onCreate, compact = false }) {
             className="text-sm bg-transparent text-bone border border-line rounded px-2 py-1.5"
           />
         </label>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <span className="text-xs text-mute">Repetir</span>
+        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Repetir">
+          {REPEATS.map((r) => (
+            <button
+              key={r.key}
+              type="button"
+              role="radio"
+              aria-checked={repeat === r.key}
+              onClick={() => {
+                setRepeat(r.key);
+                setError("");
+              }}
+              className={`px-3 py-1.5 rounded-full text-xs border transition-colors ${
+                repeat === r.key
+                  ? "border-ember text-ember bg-ember/10"
+                  : "border-line text-mute hover:text-bone"
+              }`}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+
+        {repeat === "custom" && (
+          <div className="flex flex-wrap gap-1.5">
+            {WEEKDAY_LABELS.map((label, i) => (
+              <button
+                key={label}
+                type="button"
+                aria-pressed={customDays.includes(i)}
+                onClick={() => toggleDay(i)}
+                className={`w-11 h-9 rounded-md text-xs border transition-colors ${
+                  customDays.includes(i)
+                    ? "border-ember text-ember bg-ember/10"
+                    : "border-line text-mute hover:text-bone"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {repeat !== "none" && (
+          <p className="text-[11px] text-mute">
+            Cria as repetições dos próximos {REPEAT_DAYS_AHEAD} dias.
+          </p>
+        )}
       </div>
 
       {error && <p className="text-xs text-red-400">{error}</p>}

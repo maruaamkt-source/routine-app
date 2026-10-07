@@ -13,9 +13,17 @@
   --mute: 138 138 130;
   --ember: 217 166 92;
   --glow: 217 166 92;
-  --glow-a: 0.16;
-  --glow-b: 0.08;
-  --grain: 0.045;
+  --glow-a: 0.28;
+  --glow-b: 0.16;
+  --grain: 0.03;
+  --k-tarefa: 160 106 12;
+  --k-habito: 46 118 68;
+  --k-compromisso: 48 88 172;
+  --k-lembrete: 108 78 162;
+  --k-tarefa: 217 164 65;
+  --k-habito: 111 174 123;
+  --k-compromisso: 107 143 214;
+  --k-lembrete: 154 130 201;
 }
 
 /* Tema claro: papel de Bíblia, tinta escura e dourado fechado */
@@ -29,8 +37,8 @@
   --mute: 112 108 98;
   --ember: 138 96 22;
   --glow: 190 150 70;
-  --glow-a: 0.18;
-  --glow-b: 0.1;
+  --glow-a: 0.03;
+  --glow-b: 0.18;
   --grain: 0.03;
 }
 

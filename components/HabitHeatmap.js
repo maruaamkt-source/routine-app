@@ -3,9 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toISODate, todayISO, habitAppliesOnISO } from "@/lib/dateUtils";
 
-const WEEKS = 20;
-const CELL = 14;
 const GAP = 3;
+const MIN_CELL = 15;
+const MIN_WEEKS = 8;
+const MAX_WEEKS = 52;
+const LABEL_H = 14;
 const MONTH_NAMES = [
   "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
   "Jul", "Ago", "Set", "Out", "Nov", "Dez",
@@ -33,11 +35,34 @@ function formatBR(iso) {
 }
 
 export default function HabitHeatmap({ habits, habitLogs }) {
-  const scrollRef = useRef(null);
+  const gridRef = useRef(null);
+  const [width, setWidth] = useState(0);
   const [selected, setSelected] = useState(null);
   const todayIso = todayISO();
 
+  // Mede a largura disponível e acompanha quando ela muda
+  useEffect(() => {
+    const el = gridRef.current;
+    if (!el) return;
+    const update = () => setWidth(el.clientWidth);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  // Quantas semanas cabem e qual o tamanho de cada quadradinho
+  const { weeksCount, cell } = useMemo(() => {
+    if (!width) return { weeksCount: 0, cell: MIN_CELL };
+    const fit = Math.floor((width + GAP) / (MIN_CELL + GAP));
+    const count = Math.max(MIN_WEEKS, Math.min(MAX_WEEKS, fit));
+    const size = (width + GAP) / count - GAP;
+    return { weeksCount: count, cell: Math.max(10, size) };
+  }, [width]);
+
   const weeks = useMemo(() => {
+    if (!weeksCount) return [];
+
     // Quais hábitos foram feitos em cada dia
     const doneByDate = {};
     habitLogs.forEach((l) => {
@@ -55,10 +80,10 @@ export default function HabitHeatmap({ habits, habitLogs }) {
     thisMonday.setDate(now.getDate() + diffToMonday);
 
     const start = new Date(thisMonday);
-    start.setDate(start.getDate() - 7 * (WEEKS - 1));
+    start.setDate(start.getDate() - 7 * (weeksCount - 1));
 
     const result = [];
-    for (let w = 0; w < WEEKS; w++) {
+    for (let w = 0; w < weeksCount; w++) {
       const days = [];
       for (let d = 0; d < 7; d++) {
         const date = new Date(start);
@@ -83,24 +108,31 @@ export default function HabitHeatmap({ habits, habitLogs }) {
       result.push({ monday: days[0].iso, days });
     }
     return result;
-  }, [habits, habitLogs, todayIso]);
+  }, [habits, habitLogs, todayIso, weeksCount]);
 
-  // Começa mostrando o lado mais recente (direita)
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (el) el.scrollLeft = el.scrollWidth;
+  // Rótulos dos meses: aparecem onde o mês muda, sem ficarem grudados
+  const monthLabels = useMemo(() => {
+    const candidates = [];
+    weeks.forEach((week, i) => {
+      const month = Number(week.monday.slice(5, 7)) - 1;
+      if (i === 0) {
+        candidates.push({ index: i, text: MONTH_NAMES[month] });
+      } else {
+        const prev = Number(weeks[i - 1].monday.slice(5, 7)) - 1;
+        if (month !== prev) candidates.push({ index: i, text: MONTH_NAMES[month] });
+      }
+    });
+    const labels = {};
+    candidates.forEach((c, i) => {
+      const next = candidates[i + 1];
+      if (!next || next.index - c.index >= 3) labels[c.index] = c.text;
+    });
+    return labels;
   }, [weeks]);
-
-  function monthLabel(week, index) {
-    const month = Number(week.monday.slice(5, 7)) - 1;
-    if (index === 0) return MONTH_NAMES[month];
-    const prevMonth = Number(weeks[index - 1].monday.slice(5, 7)) - 1;
-    return month !== prevMonth ? MONTH_NAMES[month] : "";
-  }
 
   return (
     <div className="rounded-lg border border-line bg-panel p-5 mb-8 min-w-0">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
         <h2 className="text-xs tracking-wide text-mute uppercase">Constância</h2>
         <div className="flex items-center gap-1.5 text-[11px] text-mute">
           <span>Menos</span>
@@ -117,57 +149,63 @@ export default function HabitHeatmap({ habits, habitLogs }) {
       <div className="flex gap-2 min-w-0">
         {/* Nomes dos dias da semana */}
         <div className="flex flex-col shrink-0" style={{ gap: GAP }}>
-          <span style={{ height: 14 }} />
+          <span style={{ height: LABEL_H }} />
           {ROW_LABELS.map((label, i) => (
             <span
               key={i}
               className="text-[10px] text-mute leading-none flex items-center"
-              style={{ height: CELL }}
+              style={{ height: cell }}
             >
               {label}
             </span>
           ))}
         </div>
 
-        {/* Grade (rola pro lado dentro do card) */}
-        <div ref={scrollRef} className="overflow-x-auto min-w-0 flex-1 pb-1">
-          <div className="flex w-max" style={{ gap: GAP }}>
-            {weeks.map((week, wi) => (
-              <div key={week.monday} className="flex flex-col" style={{ gap: GAP }}>
-                <span
-                  className="text-[10px] text-mute leading-none"
-                  style={{ height: 14 }}
+        {/* Grade: ocupa toda a largura disponível, sem rolagem */}
+        <div ref={gridRef} className="flex-1 min-w-0">
+          {weeksCount > 0 && (
+            <div className="flex" style={{ gap: GAP }}>
+              {weeks.map((week, wi) => (
+                <div
+                  key={week.monday}
+                  className="flex flex-col"
+                  style={{ gap: GAP, width: cell }}
                 >
-                  {monthLabel(week, wi)}
-                </span>
-                {week.days.map((d) =>
-                  d.future ? (
-                    <span key={d.iso} style={{ width: CELL, height: CELL }} />
-                  ) : (
-                    <button
-                      key={d.iso}
-                      onClick={() => setSelected(d)}
-                      title={`${formatBR(d.iso)}: ${d.done} de ${d.possible}`}
-                      aria-label={`${formatBR(d.iso)}: ${d.done} de ${d.possible} hábitos`}
-                      style={{
-                        width: CELL,
-                        height: CELL,
-                        borderRadius: 3,
-                        background: LEVEL_COLORS[d.level],
-                        outline:
-                          d.iso === todayIso
-                            ? "1.5px solid rgb(var(--ember))"
-                            : selected && selected.iso === d.iso
-                            ? "1.5px solid rgb(var(--bone) / 0.6)"
-                            : "none",
-                        outlineOffset: 1,
-                      }}
-                    />
-                  )
-                )}
-              </div>
-            ))}
-          </div>
+                  <span
+                    className="text-[10px] text-mute leading-none whitespace-nowrap"
+                    style={{ height: LABEL_H }}
+                  >
+                    {monthLabels[wi] ?? ""}
+                  </span>
+                  {week.days.map((d) =>
+                    d.future ? (
+                      <span key={d.iso} style={{ width: cell, height: cell }} />
+                    ) : (
+                      <button
+                        key={d.iso}
+                        onClick={() => setSelected(d)}
+                        title={`${formatBR(d.iso)}: ${d.done} de ${d.possible}`}
+                        aria-label={`${formatBR(d.iso)}: ${d.done} de ${d.possible} hábitos`}
+                        style={{
+                          width: cell,
+                          height: cell,
+                          borderRadius: 3,
+                          background: LEVEL_COLORS[d.level],
+                          outline:
+                            d.iso === todayIso
+                              ? "1.5px solid rgb(var(--ember))"
+                              : selected && selected.iso === d.iso
+                              ? "1.5px solid rgb(var(--bone) / 0.6)"
+                              : "none",
+                          outlineOffset: 1,
+                        }}
+                      />
+                    )
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

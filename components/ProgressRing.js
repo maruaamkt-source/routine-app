@@ -14,7 +14,7 @@ export default function ProgressRing({ percent = 0, size = 96, label, sublabel }
           cy={size / 2}
           r={radius}
           fill="none"
-          stroke="rgba(242,239,233,0.10)"
+          style={{ stroke: "rgb(var(--bone) / 0.10)" }}
           strokeWidth={stroke}
         />
         <circle
@@ -22,12 +22,14 @@ export default function ProgressRing({ percent = 0, size = 96, label, sublabel }
           cy={size / 2}
           r={radius}
           fill="none"
-          stroke="#D9A65C"
+          style={{
+            stroke: "rgb(var(--ember))",
+            transition: "stroke-dashoffset 0.5s ease",
+          }}
           strokeWidth={stroke}
           strokeDasharray={circumference}
           strokeDashoffset={offset}
           strokeLinecap="round"
-          style={{ transition: "stroke-dashoffset 0.5s ease" }}
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
