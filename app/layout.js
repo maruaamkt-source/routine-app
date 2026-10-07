@@ -45,6 +45,8 @@ const themeScript = `
         : "dark";
     }
     document.documentElement.setAttribute("data-theme", t);
+    var a = localStorage.getItem("accent");
+    if (a) document.documentElement.setAttribute("data-accent", a);
   } catch (e) {}
 })();
 `;

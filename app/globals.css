@@ -157,6 +157,41 @@ button {
 }
 
 /* Campos de hora/data: o campo inteiro abre o seletor, não só o ícone */
+/* ---------- Cores de destaque (escolhidas em Personalizar) ---------- */
+:root[data-accent="azul"] {
+  --ember: 107 160 230;
+  --glow: 107 160 230;
+}
+:root[data-accent="verde"] {
+  --ember: 111 174 123;
+  --glow: 111 174 123;
+}
+:root[data-accent="vinho"] {
+  --ember: 205 100 120;
+  --glow: 205 100 120;
+}
+:root[data-accent="roxo"] {
+  --ember: 170 140 220;
+  --glow: 170 140 220;
+}
+
+/* Versões mais escuras pro tema claro (precisam vir depois das de cima) */
+:root[data-theme="light"][data-accent="azul"] {
+  --ember: 40 90 170;
+  --glow: 80 130 210;
+}
+:root[data-theme="light"][data-accent="verde"] {
+  --ember: 38 112 68;
+  --glow: 80 150 100;
+}
+:root[data-theme="light"][data-accent="vinho"] {
+  --ember: 150 40 65;
+  --glow: 190 80 100;
+}
+:root[data-theme="light"][data-accent="roxo"] {
+  --ember: 105 70 160;
+  --glow: 140 110 190;
+}
 input[type="time"],
 input[type="date"] {
   position: relative;

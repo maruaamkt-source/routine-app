@@ -134,6 +134,12 @@ export default function Nav() {
           <div>
             <InstallButton />
           </div>
+          <Link
+            href="/personalizar"
+            className="text-mute hover:text-bone text-sm transition-colors"
+          >
+            Personalizar
+          </Link>
           <ThemeToggle withLabel />
           <button
             onClick={signOut}
@@ -163,6 +169,13 @@ export default function Nav() {
             </Link>
           );
         })}
+        <Link
+          href="/personalizar"
+          aria-label="Personalizar"
+          className="text-mute text-base leading-none"
+        >
+          ⚙
+        </Link>
         <ThemeToggle />
       </nav>
     </>
