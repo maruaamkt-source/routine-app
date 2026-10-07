@@ -99,13 +99,6 @@ export default function DiaPage() {
     setEditing(null);
   }
 
-  function handleUpdate(updated) {
-    setTasks((prev) =>
-      prev.map((t) => (t.id === updated.id ? updated : t)).filter((t) => t.due_date === date)
-    );
-    setEditing(null);
-  }
-
   async function toggleHabit(habit) {
     const log = logs.find((l) => l.habit_id === habit.id);
     if (log) {
@@ -487,6 +480,7 @@ function KindIcon({ kind, size = 15 }) {
 
 function Chip({ item }) {
   const style = KIND_STYLE[item.kind] ?? KIND_STYLE.tarefa;
+  const titleClass = `text-xs ${item.done ? "text-mute line-through" : "text-bone"}`;
   return (
     <div
       className="flex items-center gap-2 rounded-full border pl-1 pr-3 py-1 transition-colors"
@@ -506,11 +500,17 @@ function Chip({ item }) {
       >
         <KindIcon kind={item.kind} size={12} />
       </button>
-      <span
-        className={`text-xs ${item.done ? "text-mute line-through" : "text-bone"}`}
-      >
-        {item.title}
-      </span>
+      {item.edit ? (
+        <button
+          onClick={item.edit}
+          aria-label={`Editar ${item.title}`}
+          className={`${titleClass} text-left hover:underline`}
+        >
+          {item.title}
+        </button>
+      ) : (
+        <span className={titleClass}>{item.title}</span>
+      )}
       {item.remove && (
         <button
           onClick={item.remove}

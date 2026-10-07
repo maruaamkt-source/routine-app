@@ -18,6 +18,7 @@ import {
   habitAppliesOnISO,
 } from "@/lib/dateUtils";
 import { scheduleTaskReminders } from "@/lib/notifications";
+import { renewSeries } from "@/lib/taskSeries";
 import { getQuoteForDate, getRandomQuote } from "@/lib/quotes";
 
 function greeting() {
@@ -88,6 +89,13 @@ export default function TodayPage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (!user) return;
+    renewSeries(user.id).then((created) => {
+      if (created) loadData();
+    });
+  }, [user, loadData]);
 
   useEffect(() => {
     const cleanup = scheduleTaskReminders(tasks, today);
