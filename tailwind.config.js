@@ -7,14 +7,14 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        ink: "#000000",
-        bone: "#F2EFE9",
-        surface: "#0E0D0B",
-        panel: "#131210",
-        line: "rgba(242,239,233,0.12)",
-        mute: "#8A8A82",
-        ember: "#D9A65C",
-        emberSoft: "rgba(217,166,92,0.14)",
+        ink: "rgb(var(--ink) / <alpha-value>)",
+        bone: "rgb(var(--bone) / <alpha-value>)",
+        surface: "rgb(var(--surface) / <alpha-value>)",
+        panel: "rgb(var(--panel) / <alpha-value>)",
+        line: "rgb(var(--line) / <alpha-value>)",
+        mute: "rgb(var(--mute) / <alpha-value>)",
+        ember: "rgb(var(--ember) / <alpha-value>)",
+        emberSoft: "rgb(var(--ember) / 0.14)",
       },
       fontFamily: {
         display: ["var(--font-fraunces)", "Georgia", "serif"],

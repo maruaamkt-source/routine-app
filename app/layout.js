@@ -22,9 +22,32 @@ export const metadata = {
   description: "Organize sua rotina do dia a dia.",
 };
 
+// Roda antes da página aparecer: lê a escolha salva (ou a preferência do
+// sistema na primeira vez) e aplica data-theme no <html>. Evita o "piscar".
+const themeScript = `
+(function () {
+  try {
+    var t = localStorage.getItem("theme");
+    if (t !== "light" && t !== "dark") {
+      t = window.matchMedia("(prefers-color-scheme: light)").matches
+        ? "light"
+        : "dark";
+    }
+    document.documentElement.setAttribute("data-theme", t);
+  } catch (e) {}
+})();
+`;
+
 export default function RootLayout({ children }) {
   return (
-    <html lang="pt-BR" className={`${fraunces.variable} ${inter.variable}`}>
+    <html
+      lang="pt-BR"
+      className={`${fraunces.variable} ${inter.variable}`}
+      suppressHydrationWarning
+    >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body className="bg-ink text-bone font-sans antialiased">
         <div className="ambient-bg" />
         <div className="grain" />

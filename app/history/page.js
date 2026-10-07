@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/components/AuthProvider";
 import Nav from "@/components/Nav";
 import ProgressRing from "@/components/ProgressRing";
+import HabitHeatmap from "@/components/HabitHeatmap";
 import { toISODate, habitAppliesOnISO } from "@/lib/dateUtils";
 
 const WEEKS_BACK = 8;
@@ -165,7 +166,7 @@ export default function HistoryPage() {
   return (
     <div className="md:flex">
       <Nav />
-      <main className="flex-1 px-6 py-10 md:px-12 md:py-14 pb-24 md:pb-14">
+      <main className="flex-1 min-w-0 px-6 py-10 md:px-12 md:py-14 pb-24 md:pb-14">
         <div className="flex items-start justify-between mb-8">
           <div>
             <h1 className="font-serif text-3xl md:text-4xl text-bone mb-1">
@@ -176,6 +177,8 @@ export default function HistoryPage() {
             </p>
           </div>
         </div>
+
+        {!fetching && <HabitHeatmap habits={habits} habitLogs={habitLogs} />}
 
         <div className="flex gap-2 mb-8">
           <button
@@ -203,7 +206,7 @@ export default function HistoryPage() {
         {fetching ? (
           <p className="text-sm text-mute">Carregando...</p>
         ) : (
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {stats.map((s) => (
               <div
                 key={s.key}

@@ -58,32 +58,16 @@ export default function HabitsPage() {
     loadHabits();
   }, [loadHabits]);
 
-  async function handleCreateHabit(name, days_of_week, times = {}) {
+  async function handleCreateHabit(name, days_of_week) {
     if (!user) return;
     const { data, error } = await supabase
       .from("habits")
-      .insert({
-        name,
-        user_id: user.id,
-        days_of_week,
-        start_time: times.start_time ?? null,
-        end_time: times.end_time ?? null,
-      })
+      .insert({ name, user_id: user.id, days_of_week })
       .select()
       .single();
     if (!error) setHabits((prev) => [...prev, data]);
   }
-  async function handleUpdateHabit(habit, changes) {
-    const { error } = await supabase
-      .from("habits")
-      .update(changes)
-      .eq("id", habit.id);
-    if (!error) {
-      setHabits((prev) =>
-        prev.map((h) => (h.id === habit.id ? { ...h, ...changes } : h))
-      );
-    }
-  }
+
   async function handleDeleteHabit(habit) {
     const { error } = await supabase.from("habits").delete().eq("id", habit.id);
     if (!error) setHabits((prev) => prev.filter((h) => h.id !== habit.id));
@@ -169,7 +153,7 @@ export default function HabitsPage() {
   return (
     <div className="md:flex">
       <Nav />
-      <main className="flex-1 min-w-0 px-6 py-10 md:px-12 md:py-14 pb-24 md:pb-14">
+      <main className="flex-1 px-6 py-10 md:px-12 md:py-14 pb-24 md:pb-14">
         <div className="flex items-start justify-between mb-8">
           <div>
             <p className="text-sm text-ember uppercase tracking-wide mb-1">
@@ -190,8 +174,8 @@ export default function HabitsPage() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="min-w-0 md:col-span-2 rounded-lg border border-line bg-panel p-5">
+        <div className="grid md:grid-cols-3 gap-4">
+          <div className="md:col-span-2 rounded-lg border border-line bg-panel p-5">
             <div className="flex items-center justify-between mb-3">
               <p className="text-lg text-bone capitalize">{dateLabel}</p>
               <span className="text-xs text-mute border border-line rounded-full px-2 py-0.5">
@@ -220,7 +204,6 @@ export default function HabitsPage() {
                       appliesToday={appliesToday}
                       onToggleToday={handleToggleToday}
                       onDelete={handleDeleteHabit}
-                       onUpdate={handleUpdateHabit}
                     />
                   );
                 })}
@@ -232,7 +215,7 @@ export default function HabitsPage() {
             </div>
           </div>
 
-          <div className="flex flex-col gap-4 min-w-0">
+          <div className="flex flex-col gap-4">
             <div className="rounded-lg border border-line bg-panel p-5">
               <h2 className="text-xs tracking-wide text-mute uppercase mb-4">
                 Progresso Semanal

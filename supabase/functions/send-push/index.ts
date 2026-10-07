@@ -66,7 +66,10 @@ Deno.serve(async (req) => {
         });
 
         try {
-          await webpush.sendNotification(pushSubscription, payload);
+          await webpush.sendNotification(pushSubscription, payload, {
+            TTL: 60,
+            urgency: "high",
+          });
           sentCount++;
         } catch (err) {
           // Se a subscription expirou/foi revogada, remove do banco

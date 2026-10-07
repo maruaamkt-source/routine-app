@@ -1,5 +1,10 @@
 "use client";
 
+const KIND_LABEL = {
+  compromisso: "Compromisso",
+  lembrete: "Lembrete",
+};
+
 export default function TaskList({ tasks, onToggle, onDelete }) {
   if (tasks.length === 0) {
     return (
@@ -10,47 +15,57 @@ export default function TaskList({ tasks, onToggle, onDelete }) {
   }
 
   const sorted = [...tasks].sort((a, b) => {
-    if (!a.due_time) return 1;
-    if (!b.due_time) return -1;
-    return a.due_time.localeCompare(b.due_time);
+    const ta = a.start_time ?? a.due_time;
+    const tb = b.start_time ?? b.due_time;
+    if (!ta) return 1;
+    if (!tb) return -1;
+    return ta.localeCompare(tb);
   });
 
   return (
     <ul className="flex flex-col">
-      {sorted.map((task) => (
-        <li
-          key={task.id}
-          className="flex items-center gap-3 py-3.5 border-b border-line group"
-        >
-          <input
-            type="checkbox"
-            className="checkbox"
-            checked={task.is_completed}
-            onChange={() => onToggle(task)}
-          />
-          <div className="flex-1">
-            <p
-              className={`text-sm ${
-                task.is_completed ? "line-through text-mute" : "text-bone"
-              }`}
-            >
-              {task.title}
-            </p>
-          </div>
-          {task.due_time && (
-            <span className="text-xs text-ember tabular-nums">
-              {task.due_time.slice(0, 5)}
-            </span>
-          )}
-          <button
-            onClick={() => onDelete(task)}
-            className="text-xs text-mute opacity-0 group-hover:opacity-100 hover:text-bone transition-opacity"
-            aria-label="Excluir tarefa"
+      {sorted.map((task) => {
+        const start = task.start_time ?? task.due_time;
+        const kindLabel = KIND_LABEL[task.kind];
+        return (
+          <li
+            key={task.id}
+            className="flex items-center gap-3 py-3.5 border-b border-line group"
           >
-            Excluir
-          </button>
-        </li>
-      ))}
+            <input
+              type="checkbox"
+              className="checkbox"
+              checked={task.is_completed}
+              onChange={() => onToggle(task)}
+            />
+            <div className="flex-1 min-w-0">
+              <p
+                className={`text-sm truncate ${
+                  task.is_completed ? "line-through text-mute" : "text-bone"
+                }`}
+              >
+                {task.title}
+              </p>
+              {kindLabel && (
+                <p className="text-xs text-mute">{kindLabel}</p>
+              )}
+            </div>
+            {start && (
+              <span className="text-xs text-ember tabular-nums">
+                {start.slice(0, 5)}
+                {task.end_time && ` - ${task.end_time.slice(0, 5)}`}
+              </span>
+            )}
+            <button
+              onClick={() => onDelete(task)}
+              className="text-xs text-mute md:opacity-0 md:group-hover:opacity-100 hover:text-bone transition-opacity px-1 py-2"
+              aria-label="Excluir tarefa"
+            >
+              Excluir
+            </button>
+          </li>
+        );
+      })}
     </ul>
   );
 }

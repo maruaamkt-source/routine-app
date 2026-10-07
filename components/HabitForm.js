@@ -7,6 +7,9 @@ export default function HabitForm({ onCreate }) {
   const [name, setName] = useState("");
   const [everyDay, setEveryDay] = useState(true);
   const [selectedDays, setSelectedDays] = useState([]);
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
+  const [error, setError] = useState("");
   const [open, setOpen] = useState(false);
 
   function toggleDay(index) {
@@ -15,15 +18,33 @@ export default function HabitForm({ onCreate }) {
     );
   }
 
-  async function handleSubmit(e) {
-    e.preventDefault();
-    if (!name.trim()) return;
-    const days_of_week = everyDay || selectedDays.length === 0 ? null : selectedDays;
-    await onCreate(name.trim(), days_of_week);
+  function reset() {
     setName("");
     setEveryDay(true);
     setSelectedDays([]);
+    setStartTime("");
+    setEndTime("");
+    setError("");
     setOpen(false);
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    if (endTime && !startTime) {
+      setError("Defina o horário de início antes do fim.");
+      return;
+    }
+    if (endTime && endTime <= startTime) {
+      setError("O fim precisa ser depois do início.");
+      return;
+    }
+    const days_of_week = everyDay || selectedDays.length === 0 ? null : selectedDays;
+    await onCreate(name.trim(), days_of_week, {
+      start_time: startTime || null,
+      end_time: endTime || null,
+    });
+    reset();
   }
 
   if (!open) {
@@ -87,6 +108,35 @@ export default function HabitForm({ onCreate }) {
         )}
       </div>
 
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="flex flex-col gap-1 text-xs text-mute">
+          Início (opcional)
+          <input
+            type="time"
+            value={startTime}
+            onChange={(e) => {
+              setStartTime(e.target.value);
+              setError("");
+            }}
+            className="text-sm bg-transparent text-bone border border-line rounded px-2 py-1.5"
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-mute">
+          Fim (opcional)
+          <input
+            type="time"
+            value={endTime}
+            onChange={(e) => {
+              setEndTime(e.target.value);
+              setError("");
+            }}
+            className="text-sm bg-transparent text-bone border border-line rounded px-2 py-1.5"
+          />
+        </label>
+      </div>
+
+      {error && <p className="text-xs text-red-400">{error}</p>}
+
       <div className="flex items-center gap-2">
         <button
           type="submit"
@@ -96,7 +146,7 @@ export default function HabitForm({ onCreate }) {
         </button>
         <button
           type="button"
-          onClick={() => setOpen(false)}
+          onClick={reset}
           className="text-sm text-mute hover:text-bone"
         >
           Cancelar
