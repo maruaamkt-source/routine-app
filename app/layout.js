@@ -20,6 +20,16 @@ const inter = Inter({
 export const metadata = {
   title: "Routine",
   description: "Organize sua rotina do dia a dia.",
+  manifest: "/manifest.json",
+  icons: {
+    icon: "/icon.png",
+    apple: "/icon-192.png",
+  },
+  appleWebApp: {
+    capable: true,
+    title: "Routine",
+    statusBarStyle: "black-translucent",
+  },
 };
 
 // Roda antes da página aparecer: lê a escolha salva (ou a preferência do
@@ -37,6 +47,10 @@ const themeScript = `
   } catch (e) {}
 })();
 `;
+
+export const viewport = {
+  themeColor: "#000000",
+};
 
 export default function RootLayout({ children }) {
   return (
