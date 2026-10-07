@@ -3,10 +3,10 @@ export default function Watermark() {
     <div
       aria-hidden="true"
       className="pointer-events-none select-none fixed z-30 bottom-14 left-3 md:bottom-4 md:left-auto md:right-5 text-left md:text-right"
-      style={{ opacity: 0.35 }}
+      style={{ opacity: 0.6 }}
     >
       <p
-        className="tracked text-xs"
+        className="tracked text-sm"
         style={{
           fontFamily: "var(--font-fraunces), serif",
           color: "rgb(var(--bone))",
