@@ -222,9 +222,9 @@ export default function TodayPage() {
   return (
     <div className="md:flex">
       <Nav />
-      <main className="flex-1 px-6 py-10 md:px-12 md:py-14 pb-24 md:pb-14">
+      <main className="flex-1 min-w-0 px-6 py-10 md:px-12 md:py-14 pb-24 md:pb-14">
         <div className="flex items-start justify-between mb-8">
-          <div>
+          <div className="min-w-0">
             <p className="text-sm text-ember uppercase tracking-wide mb-1">
               {dateLabel}
             </p>
@@ -256,9 +256,9 @@ export default function TodayPage() {
           <TaskForm defaultDate={today} onCreate={handleCreate} />
         </div>
 
-        <div className="grid md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Painel: hoje */}
-          <div className="rounded-lg border border-line bg-panel p-5">
+          <div className="min-w-0 rounded-lg border border-line bg-panel p-5">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xs tracking-wide text-mute uppercase">
                 {new Date().toLocaleDateString("pt-BR", {
@@ -307,7 +307,7 @@ export default function TodayPage() {
           </div>
 
           {/* Painel: hábitos */}
-          <div className="rounded-lg border border-line bg-panel p-5">
+          <div className="min-w-0 rounded-lg border border-line bg-panel p-5">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xs tracking-wide text-mute uppercase">
                 Hábitos
@@ -339,7 +339,7 @@ export default function TodayPage() {
                         checked={doneToday}
                         onChange={() => handleToggleHabitToday(habit)}
                       />
-                      <span className="text-sm text-bone flex-1">
+                      <span className="text-sm text-bone flex-1 min-w-0">
                         {habit.name}
                       </span>
                       <span className="text-xs text-mute">
@@ -353,7 +353,7 @@ export default function TodayPage() {
           </div>
 
           {/* Painel: progresso semanal */}
-          <div className="rounded-lg border border-line bg-panel p-5">
+          <div className="min-w-0 rounded-lg border border-line bg-panel p-5">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xs tracking-wide text-mute uppercase">
                 Progresso Semanal
