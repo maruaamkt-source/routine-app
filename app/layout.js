@@ -34,18 +34,87 @@ const inter = Inter({
 
 // Fontes opcionais (escolhidas em Personalizar). preload: false = só baixam
 // se a pessoa realmente usar, então não pesam o app.
-const opt = { subsets: ["latin"], display: "swap", preload: false };
+// IMPORTANTE: o next/font exige as opções escritas por extenso em cada fonte
+// (nada de spread "...", nem objeto compartilhado).
+const poppins = Poppins({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-poppins",
+  display: "swap",
+  preload: false,
+});
 
-const poppins = Poppins({ ...opt, weight: ["400", "500", "600"], variable: "--font-poppins" });
-const lora = Lora({ ...opt, weight: ["400", "500", "600"], variable: "--font-lora" });
-const playfair = Playfair_Display({ ...opt, weight: ["400", "500", "600"], variable: "--font-playfair" });
-const cormorant = Cormorant_Garamond({ ...opt, weight: ["400", "500", "600"], variable: "--font-cormorant" });
-const garamond = EB_Garamond({ ...opt, weight: ["400", "500", "600"], variable: "--font-garamond" });
-const merriweather = Merriweather({ ...opt, weight: ["400", "700"], variable: "--font-merriweather" });
-const montserrat = Montserrat({ ...opt, weight: ["400", "500", "600"], variable: "--font-montserrat" });
-const nunito = Nunito({ ...opt, weight: ["400", "500", "600"], variable: "--font-nunito" });
-const dmsans = DM_Sans({ ...opt, weight: ["400", "500", "600"], variable: "--font-dmsans" });
-const cinzel = Cinzel({ ...opt, weight: ["400", "500", "600"], variable: "--font-cinzel" });
+const lora = Lora({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-lora",
+  display: "swap",
+  preload: false,
+});
+
+const playfair = Playfair_Display({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-playfair",
+  display: "swap",
+  preload: false,
+});
+
+const cormorant = Cormorant_Garamond({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-cormorant",
+  display: "swap",
+  preload: false,
+});
+
+const garamond = EB_Garamond({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-garamond",
+  display: "swap",
+  preload: false,
+});
+
+const merriweather = Merriweather({
+  subsets: ["latin"],
+  weight: ["400", "700"],
+  variable: "--font-merriweather",
+  display: "swap",
+  preload: false,
+});
+
+const montserrat = Montserrat({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-montserrat",
+  display: "swap",
+  preload: false,
+});
+
+const nunito = Nunito({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-nunito",
+  display: "swap",
+  preload: false,
+});
+
+const dmsans = DM_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-dmsans",
+  display: "swap",
+  preload: false,
+});
+
+const cinzel = Cinzel({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-cinzel",
+  display: "swap",
+  preload: false,
+});
 
 const fontVars = [
   fraunces,
