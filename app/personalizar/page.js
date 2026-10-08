@@ -370,9 +370,15 @@ export default function PersonalizarPage() {
     try {
       if (next) {
         root.removeAttribute("data-glow");
+        var old = document.getElementById("glow-off");
+        if (old) old.remove();
         localStorage.removeItem("glow");
       } else {
         root.setAttribute("data-glow", "off");
+        var st = document.createElement("style");
+        st.id = "glow-off";
+        st.textContent = ".ambient-bg{display:none !important}";
+        document.head.appendChild(st);
         localStorage.setItem("glow", "off");
       }
     } catch (e) {}

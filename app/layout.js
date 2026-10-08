@@ -183,7 +183,13 @@ const themeScript = `
     if (b) d.setAttribute("data-body", b);
     var s = localStorage.getItem("size");
     if (s) d.setAttribute("data-size", s);
-    if (localStorage.getItem("glow") === "off") d.setAttribute("data-glow", "off");
+    if (localStorage.getItem("glow") === "off") {
+      d.setAttribute("data-glow", "off");
+      var gs = document.createElement("style");
+      gs.id = "glow-off";
+      gs.textContent = ".ambient-bg{display:none !important}";
+      document.head.appendChild(gs);
+    }
     var kc = JSON.parse(localStorage.getItem("kcolors"));
     if (kc) {
       for (var n in kc) {
