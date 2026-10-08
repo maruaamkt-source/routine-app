@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
+import { QUOTES } from "./quotes.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -8,6 +9,7 @@ const VAPID_PRIVATE_KEY = Deno.env.get("VAPID_PRIVATE_KEY")!;
 const VAPID_SUBJECT = Deno.env.get("VAPID_SUBJECT") || "mailto:seuemail@example.com";
 
 const REMINDER_MINUTES = 10; // quantos minutos antes avisar
+const VERSE_TIME = "07:00"; // hora do versículo do dia (horário de São Paulo)
 
 webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 
@@ -26,6 +28,42 @@ function toISO(d: Date) {
 
 function toHHMM(d: Date) {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+// Mesma regra do app (getQuoteForDate): dia do ano % tamanho da lista
+function quoteForDate(d: Date) {
+  const dayOfYear = Math.floor(
+    (d.getTime() - new Date(d.getFullYear(), 0, 0).getTime()) / 86400000
+  );
+  return QUOTES[dayOfYear % QUOTES.length];
+}
+
+// Envia uma notificação pra uma inscrição. Retorna true se enviou.
+async function sendOne(sub: any, payload: string, ttl: number, tag: string) {
+  const pushSubscription = {
+    endpoint: sub.endpoint,
+    keys: {
+      p256dh: sub.p256dh,
+      auth: sub.auth,
+    },
+  };
+  try {
+    await webpush.sendNotification(pushSubscription, payload, {
+      TTL: ttl,
+      urgency: "high",
+    });
+    return true;
+  } catch (err: any) {
+    // Se a subscription expirou/foi revogada, remove do banco
+    if (err.statusCode === 404 || err.statusCode === 410) {
+      await supabase.from("push_subscriptions").delete().eq("id", sub.id);
+    } else {
+      console.error(
+        `[send-push] ERRO ao enviar ${tag}: status=${err.statusCode} corpo=${err.body}`
+      );
+    }
+    return false;
+  }
 }
 
 Deno.serve(async (req) => {
@@ -72,12 +110,9 @@ Deno.serve(async (req) => {
       }
     }
 
-    if (notices.length === 0) {
-      return new Response(JSON.stringify({ sent: 0 }), { status: 200 });
-    }
-
     let sentCount = 0;
 
+    // Avisos de tarefas
     for (const notice of notices) {
       const { data: subs, error: subsError } = await supabase
         .from("push_subscriptions")
@@ -89,36 +124,36 @@ Deno.serve(async (req) => {
         continue;
       }
 
+      const payload = JSON.stringify({
+        title: "Routine",
+        body: notice.body,
+        tag: notice.tag,
+      });
+
       for (const sub of subs) {
-        const pushSubscription = {
-          endpoint: sub.endpoint,
-          keys: {
-            p256dh: sub.p256dh,
-            auth: sub.auth,
-          },
-        };
+        if (await sendOne(sub, payload, 60, notice.tag)) sentCount++;
+      }
+    }
 
-        const payload = JSON.stringify({
-          title: "Routine",
-          body: notice.body,
-          tag: notice.tag,
-        });
+    // Versículo do dia (uma vez por dia, na hora configurada)
+    if (hhmm === VERSE_TIME) {
+      const q = quoteForDate(sp);
+      const verseTag = `verse-${todayISO}`;
+      const payload = JSON.stringify({
+        title: "Versículo do dia",
+        body: `“${q.text}” — ${q.ref}`,
+        tag: verseTag,
+      });
 
-        try {
-          await webpush.sendNotification(pushSubscription, payload, {
-            TTL: 60,
-            urgency: "high",
-          });
-          sentCount++;
-        } catch (err) {
-          // Se a subscription expirou/foi revogada, remove do banco
-          if (err.statusCode === 404 || err.statusCode === 410) {
-            await supabase.from("push_subscriptions").delete().eq("id", sub.id);
-          } else {
-            console.error(
-              `[send-push] ERRO ao enviar ${notice.tag}: status=${err.statusCode} corpo=${err.body}`
-            );
-          }
+      const { data: allSubs, error: allError } = await supabase
+        .from("push_subscriptions")
+        .select("*");
+
+      if (allError || !allSubs) {
+        console.error("[send-push] erro ao buscar inscrições do versículo:", allError);
+      } else {
+        for (const sub of allSubs) {
+          if (await sendOne(sub, payload, 3600, verseTag)) sentCount++;
         }
       }
     }

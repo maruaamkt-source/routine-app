@@ -102,6 +102,13 @@ function resetKinds() {
   } catch (e) {}
 }
 
+// ---------- Meus temas (salvos por você) ----------
+function persistMyThemes(list) {
+  try {
+    localStorage.setItem("mythemes", JSON.stringify(list));
+  } catch (e) {}
+}
+
 // ---------- Cores personalizadas ----------
 const DEFAULT_BG = "#000000";
 const DEFAULT_ACCENT = "#d9a65c";
@@ -316,6 +323,8 @@ export default function PersonalizarPage() {
   const [customAccent, setCustomAccent] = useState(DEFAULT_ACCENT);
   const [kinds, setKinds] = useState(defaultKinds());
   const [glow, setGlow] = useState(true);
+  const [myThemes, setMyThemes] = useState([]);
+  const [saveName, setSaveName] = useState("");
 
   useEffect(() => {
     try {
@@ -332,6 +341,8 @@ export default function PersonalizarPage() {
       }
       const kc = JSON.parse(localStorage.getItem("kcolors"));
       if (kc) setKinds({ ...defaultKinds(), ...kc });
+      const mt = JSON.parse(localStorage.getItem("mythemes"));
+      if (Array.isArray(mt)) setMyThemes(mt);
     } catch (e) {}
   }, []);
 
@@ -360,6 +371,29 @@ export default function PersonalizarPage() {
     applyTheme("auto");
     setAccent("ouro");
     applyAccent("ouro");
+  }
+
+  // Meus temas: salvar só quando o usuário clicar
+  function saveMyTheme() {
+    if (theme !== "custom") return;
+    const name =
+      saveName.trim() || "Meu tema " + (myThemes.length + 1);
+    const item = {
+      id: String(Date.now()),
+      name,
+      bg: customBg,
+      ac: customAccent,
+    };
+    const next = [...myThemes, item];
+    setMyThemes(next);
+    persistMyThemes(next);
+    setSaveName("");
+  }
+
+  function deleteMyTheme(id) {
+    const next = myThemes.filter((t) => t.id !== id);
+    setMyThemes(next);
+    persistMyThemes(next);
   }
 
   // Cores por tipo
@@ -561,6 +595,89 @@ export default function PersonalizarPage() {
             >
               Restaurar padrão
             </button>
+          </div>
+
+          <div className="min-w-0 rounded-lg border border-line bg-panel p-5 md:col-span-2">
+            <h2 className="text-xs tracking-wide text-mute uppercase mb-4">
+              Meus temas
+            </h2>
+
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="text"
+                value={saveName}
+                onChange={(e) => setSaveName(e.target.value)}
+                maxLength={24}
+                placeholder="Nome do tema (ex.: Meu preto e laranja)"
+                disabled={theme !== "custom"}
+                className="min-w-0 flex-1 px-4 py-2 rounded-full text-sm border border-line bg-transparent text-bone placeholder:text-mute focus:outline-none focus:border-ember disabled:opacity-50"
+              />
+              <button
+                type="button"
+                onClick={saveMyTheme}
+                disabled={theme !== "custom"}
+                className="shrink-0 px-4 py-2 rounded-full text-sm border border-ember text-ember bg-ember/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Salvar este tema
+              </button>
+            </div>
+            <p className="text-xs text-mute mt-3">
+              {theme === "custom"
+                ? "Só salva se você clicar no botão. Vai guardar o fundo e o destaque que estão ativos agora."
+                : "Ative o tema Personalizado (e ajuste as cores) pra poder salvar."}
+            </p>
+
+            {myThemes.length === 0 ? (
+              <p className="text-sm text-mute mt-5">
+                Você ainda não salvou nenhum tema.
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-5">
+                {myThemes.map((t) => {
+                  const active =
+                    theme === "custom" &&
+                    customBg.toLowerCase() === t.bg.toLowerCase() &&
+                    customAccent.toLowerCase() === t.ac.toLowerCase();
+                  return (
+                    <div
+                      key={t.id}
+                      className={`min-w-0 flex items-center gap-3 px-4 py-3 rounded-lg border transition-colors ${
+                        active ? "border-ember bg-ember/10" : "border-line"
+                      }`}
+                    >
+                      <span className="relative shrink-0 w-10 h-10">
+                        <span
+                          className="absolute inset-0 rounded-full border border-line"
+                          style={{ backgroundColor: t.bg }}
+                        />
+                        <span
+                          className="absolute right-0 bottom-0 w-5 h-5 rounded-full border-2"
+                          style={{ backgroundColor: t.ac, borderColor: t.bg }}
+                        />
+                      </span>
+                      <span className="min-w-0 flex-1 text-sm text-bone truncate">
+                        {t.name}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => pickCustom(t.bg, t.ac)}
+                        className="shrink-0 px-3 py-1 rounded-full text-xs border border-line text-mute hover:text-bone transition-colors"
+                      >
+                        Aplicar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => deleteMyTheme(t.id)}
+                        aria-label={"Apagar " + t.name}
+                        className="shrink-0 px-3 py-1 rounded-full text-xs border border-line text-mute hover:text-bone transition-colors"
+                      >
+                        Apagar
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <div className="min-w-0 rounded-lg border border-line bg-panel p-5 md:col-span-2">
