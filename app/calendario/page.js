@@ -50,6 +50,9 @@ export default function CalendarioPage() {
   const [anchor, setAnchor] = useState(() => new Date());
   const [tasks, setTasks] = useState([]);
   const [habits, setHabits] = useState([]);
+  const [selectedId, setSelectedId] = useState(null); // tarefa selecionada pra mover (toque)
+  const [overIso, setOverIso] = useState(null); // dia em destaque durante o arrastar
+  const [msg, setMsg] = useState(null);
 
   const year = anchor.getFullYear();
   const month = anchor.getMonth();
@@ -119,6 +122,7 @@ export default function CalendarioPage() {
   if (loading || !user) return null;
 
   function move(delta) {
+    setSelectedId(null);
     if (view === "mes") setAnchor(new Date(year, month + delta, 1));
     else {
       const d = new Date(anchor);
@@ -132,8 +136,43 @@ export default function CalendarioPage() {
       router.push(`/calendario/${today}`);
       return;
     }
+    setSelectedId(null);
     setView(v);
   }
+
+  // Move a tarefa pra outro dia (só troca due_date; horários continuam)
+  function moveTask(id, iso) {
+    const t = tasks.find((x) => String(x.id) === String(id));
+    if (!t || t.due_date === iso) return;
+    const oldDate = t.due_date;
+
+    setTasks((prev) => prev.map((x) => (x.id === t.id ? { ...x, due_date: iso } : x)));
+
+    supabase
+      .from("tasks")
+      .update({ due_date: iso })
+      .eq("id", t.id)
+      .eq("user_id", user.id)
+      .then(({ error }) => {
+        if (error) {
+          setTasks((prev) => prev.map((x) => (x.id === t.id ? { ...x, due_date: oldDate } : x)));
+          setMsg("Não consegui mover a tarefa. Tenta de novo.");
+          setTimeout(() => setMsg(null), 4000);
+        }
+      });
+  }
+
+  // Clique no dia: se tem tarefa selecionada, move; senão abre o dia
+  function onDayClick(iso) {
+    if (selectedId !== null) {
+      moveTask(selectedId, iso);
+      setSelectedId(null);
+      return;
+    }
+    openDay(iso);
+  }
+
+  const selectedTask = tasks.find((x) => x.id === selectedId);
 
   const title =
     view === "mes"
@@ -215,6 +254,31 @@ export default function CalendarioPage() {
               </div>
             </div>
 
+            {/* Faixa de aviso/ajuda (só na Semana) */}
+            {view === "semana" && (
+              <div className="flex items-center justify-between gap-3 px-4 py-2 border-b border-line text-xs">
+                {msg ? (
+                  <span className="text-ember">{msg}</span>
+                ) : selectedTask ? (
+                  <>
+                    <span className="text-bone min-w-0 truncate">
+                      Movendo “{selectedTask.title}” — toque no dia de destino
+                    </span>
+                    <button
+                      onClick={() => setSelectedId(null)}
+                      className="text-ember shrink-0"
+                    >
+                      Cancelar
+                    </button>
+                  </>
+                ) : (
+                  <span className="text-mute">
+                    Pra reagendar: arraste a tarefa pra outro dia (ou toque nela e depois no dia).
+                  </span>
+                )}
+              </div>
+            )}
+
             {view === "mes" ? (
               <>
                 <div className="grid grid-cols-7 border-b border-line">
@@ -268,13 +332,31 @@ export default function CalendarioPage() {
                   const nHabits = habitsOn(iso);
                   const shown = list.slice(0, 4);
                   const extra = list.length - shown.length;
+                  const isOver = overIso === iso;
                   return (
-                    <button
+                    <div
                       key={iso}
-                      onClick={() => openDay(iso)}
-                      className={`flex flex-col gap-1.5 p-3 text-left border-line hover:bg-white/5 transition-colors border-b md:border-b-0 ${
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => onDayClick(iso)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") onDayClick(iso);
+                      }}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        if (overIso !== iso) setOverIso(iso);
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const id = e.dataTransfer.getData("text/plain");
+                        setOverIso(null);
+                        if (id) moveTask(id, iso);
+                      }}
+                      className={`flex flex-col gap-1.5 p-3 text-left cursor-pointer border-line hover:bg-white/5 transition-colors border-b md:border-b-0 ${
                         i < 6 ? "md:border-r" : ""
-                      } ${isToday ? "bg-ember/10" : ""}`}
+                      } ${isToday ? "bg-ember/10" : ""} ${
+                        isOver ? "bg-ember/15 ring-1 ring-inset ring-ember" : ""
+                      }`}
                     >
                       <span className="flex items-baseline gap-2 md:block">
                         <span className="text-xs text-mute">{WEEKDAYS[i]}</span>
@@ -287,24 +369,40 @@ export default function CalendarioPage() {
                         </span>
                       </span>
 
-                      {shown.map((t) => (
-                        <span
-                          key={t.id}
-                          className="flex items-center gap-1.5 text-xs min-w-0"
-                        >
+                      {shown.map((t) => {
+                        const selected = selectedId === t.id;
+                        return (
                           <span
-                            className="w-1.5 h-1.5 rounded-full shrink-0"
-                            style={{ backgroundColor: COLOR[t.kind || "tarefa"] }}
-                          />
-                          <span
-                            className={`truncate ${
-                              t.is_completed ? "text-mute line-through" : "text-bone/90"
+                            key={t.id}
+                            draggable
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData("text/plain", String(t.id));
+                              e.dataTransfer.effectAllowed = "move";
+                              setSelectedId(null);
+                            }}
+                            onDragEnd={() => setOverIso(null)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedId(selected ? null : t.id);
+                            }}
+                            className={`flex items-center gap-1.5 text-xs min-w-0 rounded px-1 py-0.5 -mx-1 cursor-grab select-none ${
+                              selected ? "bg-ember/20 ring-1 ring-ember" : "hover:bg-white/5"
                             }`}
                           >
-                            {t.title}
+                            <span
+                              className="w-1.5 h-1.5 rounded-full shrink-0"
+                              style={{ backgroundColor: COLOR[t.kind || "tarefa"] }}
+                            />
+                            <span
+                              className={`truncate ${
+                                t.is_completed ? "text-mute line-through" : "text-bone/90"
+                              }`}
+                            >
+                              {t.title}
+                            </span>
                           </span>
-                        </span>
-                      ))}
+                        );
+                      })}
                       {extra > 0 && <span className="text-xs text-mute">+{extra}</span>}
                       {nHabits > 0 && (
                         <span className="flex items-center gap-1.5 text-xs text-mute mt-auto">
@@ -315,7 +413,7 @@ export default function CalendarioPage() {
                           {nHabits} {nHabits === 1 ? "hábito" : "hábitos"}
                         </span>
                       )}
-                    </button>
+                    </div>
                   );
                 })}
               </div>
