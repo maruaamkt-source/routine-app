@@ -180,7 +180,16 @@ export const viewport = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="pt-BR" className={fontVars} suppressHydrationWarning>
+    <html
+      lang="pt-BR"
+      className={fontVars}
+      // Garante que Fraunces e Inter nunca fiquem vazias (o app caía em Times)
+      style={{
+        "--font-fraunces": fraunces.style.fontFamily,
+        "--font-inter": inter.style.fontFamily,
+      }}
+      suppressHydrationWarning
+    >
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
