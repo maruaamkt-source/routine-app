@@ -152,6 +152,7 @@ export const metadata = {
 // sistema na primeira vez) e aplica data-theme, data-accent, data-font,
 // data-body e data-size no <html>. Evita o "piscar".
 // Se o tema salvo for "custom" (Personalizado), aplica as cores guardadas.
+// Também aplica as cores por tipo (kcolors), que são independentes do tema.
 const themeScript = `
 (function () {
   try {
@@ -182,6 +183,17 @@ const themeScript = `
     if (b) d.setAttribute("data-body", b);
     var s = localStorage.getItem("size");
     if (s) d.setAttribute("data-size", s);
+    var kc = JSON.parse(localStorage.getItem("kcolors"));
+    if (kc) {
+      for (var n in kc) {
+        var h = String(kc[n]).replace("#", "");
+        var rgb =
+          parseInt(h.slice(0, 2), 16) + " " +
+          parseInt(h.slice(2, 4), 16) + " " +
+          parseInt(h.slice(4, 6), 16);
+        d.style.setProperty("--k-" + n, rgb);
+      }
+    }
   } catch (e) {}
 })();
 `;

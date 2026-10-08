@@ -45,6 +45,50 @@ const SIZES = [
   { key: "grande", label: "Grande" },
 ];
 
+// ---------- Cores por tipo ----------
+const KINDS = [
+  { key: "tarefa", label: "Tarefa", def: "#d9a441" },
+  { key: "habito", label: "Hábito", def: "#6fae7b" },
+  { key: "compromisso", label: "Compromisso", def: "#6b8fd6" },
+  { key: "lembrete", label: "Lembrete", def: "#9a82c9" },
+];
+
+function defaultKinds() {
+  const o = {};
+  KINDS.forEach((k) => {
+    o[k.key] = k.def;
+  });
+  return o;
+}
+
+function hexToTriplet(hex) {
+  const h = hex.replace("#", "");
+  return [
+    parseInt(h.slice(0, 2), 16),
+    parseInt(h.slice(2, 4), 16),
+    parseInt(h.slice(4, 6), 16),
+  ].join(" ");
+}
+
+function applyKind(key, hex) {
+  document.documentElement.style.setProperty("--k-" + key, hexToTriplet(hex));
+}
+
+function saveKinds(obj) {
+  try {
+    localStorage.setItem("kcolors", JSON.stringify(obj));
+  } catch (e) {}
+}
+
+function resetKinds() {
+  KINDS.forEach((k) => {
+    document.documentElement.style.removeProperty("--k-" + k.key);
+  });
+  try {
+    localStorage.removeItem("kcolors");
+  } catch (e) {}
+}
+
 // ---------- Cores personalizadas ----------
 const DEFAULT_BG = "#000000";
 const DEFAULT_ACCENT = "#d9a65c";
@@ -257,6 +301,7 @@ export default function PersonalizarPage() {
   const [size, setSize] = useState("normal");
   const [customBg, setCustomBg] = useState(DEFAULT_BG);
   const [customAccent, setCustomAccent] = useState(DEFAULT_ACCENT);
+  const [kinds, setKinds] = useState(defaultKinds());
 
   useEffect(() => {
     try {
@@ -270,6 +315,8 @@ export default function PersonalizarPage() {
         setCustomBg(c.bg);
         setCustomAccent(c.ac);
       }
+      const kc = JSON.parse(localStorage.getItem("kcolors"));
+      if (kc) setKinds({ ...defaultKinds(), ...kc });
     } catch (e) {}
   }, []);
 
@@ -298,6 +345,19 @@ export default function PersonalizarPage() {
     applyTheme("auto");
     setAccent("ouro");
     applyAccent("ouro");
+  }
+
+  // Cores por tipo
+  function pickKind(key, hex) {
+    const next = { ...kinds, [key]: hex };
+    setKinds(next);
+    applyKind(key, hex);
+    saveKinds(next);
+  }
+
+  function restoreKinds() {
+    setKinds(defaultKinds());
+    resetKinds();
   }
 
   return (
@@ -413,6 +473,45 @@ export default function PersonalizarPage() {
               className="mt-4 px-4 py-2 rounded-full text-sm border border-line text-mute hover:text-bone transition-colors"
             >
               Restaurar padrão
+            </button>
+          </div>
+
+          <div className="min-w-0 rounded-lg border border-line bg-panel p-5 md:col-span-2">
+            <h2 className="text-xs tracking-wide text-mute uppercase mb-4">
+              Cores por tipo
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              {KINDS.map((k) => (
+                <div key={k.key} className="min-w-0 flex flex-col gap-2">
+                  <ColorField
+                    label={k.label}
+                    value={kinds[k.key]}
+                    onChange={(v) => pickKind(k.key, v)}
+                  />
+                  <span
+                    className="self-start max-w-full truncate px-3 py-1 rounded-full text-xs border"
+                    style={{
+                      color: `rgb(var(--k-${k.key}))`,
+                      borderColor: `color-mix(in srgb, rgb(var(--k-${k.key})) 45%, transparent)`,
+                      backgroundColor: `color-mix(in srgb, rgb(var(--k-${k.key})) 14%, transparent)`,
+                    }}
+                  >
+                    {k.label} · prévia
+                  </span>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-mute mt-4">
+              Essas cores pintam os ícones e marcações de cada tipo. Valem em
+              qualquer tema e não mudam quando você troca Escuro, Claro ou
+              Personalizado.
+            </p>
+            <button
+              type="button"
+              onClick={restoreKinds}
+              className="mt-4 px-4 py-2 rounded-full text-sm border border-line text-mute hover:text-bone transition-colors"
+            >
+              Restaurar cores dos tipos
             </button>
           </div>
 
