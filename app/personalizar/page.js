@@ -109,6 +109,28 @@ function persistMyThemes(list) {
   } catch (e) {}
 }
 
+// ---------- Brilho do fundo (mesma lógica que já funcionava) ----------
+function applyGlow(on) {
+  const root = document.documentElement;
+  try {
+    if (on) {
+      root.removeAttribute("data-glow");
+      var old = document.getElementById("glow-off");
+      if (old) old.remove();
+      localStorage.removeItem("glow");
+    } else {
+      root.setAttribute("data-glow", "off");
+      if (!document.getElementById("glow-off")) {
+        var st = document.createElement("style");
+        st.id = "glow-off";
+        st.textContent = ".ambient-bg{display:none !important}";
+        document.head.appendChild(st);
+      }
+      localStorage.setItem("glow", "off");
+    }
+  } catch (e) {}
+}
+
 // ---------- Cores personalizadas ----------
 const DEFAULT_BG = "#000000";
 const DEFAULT_ACCENT = "#d9a65c";
@@ -373,21 +395,57 @@ export default function PersonalizarPage() {
     applyAccent("ouro");
   }
 
-  // Meus temas: salvar só quando o usuário clicar
+  // Meus temas: salvar só quando o usuário clicar (guarda tudo junto)
   function saveMyTheme() {
     if (theme !== "custom") return;
-    const name =
-      saveName.trim() || "Meu tema " + (myThemes.length + 1);
+    const name = saveName.trim() || "Meu tema " + (myThemes.length + 1);
     const item = {
       id: String(Date.now()),
       name,
       bg: customBg,
       ac: customAccent,
+      accent,
+      font: titleFont,
+      bodyfont: bodyFont,
+      size,
+      kinds: { ...kinds },
+      glow,
     };
     const next = [...myThemes, item];
     setMyThemes(next);
     persistMyThemes(next);
     setSaveName("");
+  }
+
+  // Aplica um tema salvo: cores + tudo que ele guardou
+  function applyMyTheme(t) {
+    pickCustom(t.bg, t.ac);
+    if (t.accent) {
+      setAccent(t.accent);
+      applyAccent(t.accent);
+    }
+    if (t.font) {
+      setTitleFont(t.font);
+      applyAttr("data-font", "font", t.font);
+    }
+    if (t.bodyfont) {
+      setBodyFont(t.bodyfont);
+      applyAttr("data-body", "bodyfont", t.bodyfont);
+    }
+    if (t.size) {
+      setSize(t.size);
+      applyAttr("data-size", "size", t.size);
+    }
+    if (t.kinds) {
+      const merged = { ...defaultKinds(), ...t.kinds };
+      setKinds(merged);
+      KINDS.forEach((k) => applyKind(k.key, merged[k.key]));
+      saveKinds(merged);
+    }
+    if (typeof t.glow === "boolean") {
+      setGlow(t.glow);
+      applyGlow(t.glow);
+    }
   }
 
   function deleteMyTheme(id) {
@@ -413,22 +471,7 @@ export default function PersonalizarPage() {
   function toggleGlow() {
     const next = !glow;
     setGlow(next);
-    const root = document.documentElement;
-    try {
-      if (next) {
-        root.removeAttribute("data-glow");
-        var old = document.getElementById("glow-off");
-        if (old) old.remove();
-        localStorage.removeItem("glow");
-      } else {
-        root.setAttribute("data-glow", "off");
-        var st = document.createElement("style");
-        st.id = "glow-off";
-        st.textContent = ".ambient-bg{display:none !important}";
-        document.head.appendChild(st);
-        localStorage.setItem("glow", "off");
-      }
-    } catch (e) {}
+    applyGlow(next);
   }
 
   return (
@@ -623,7 +666,7 @@ export default function PersonalizarPage() {
             </div>
             <p className="text-xs text-mute mt-3">
               {theme === "custom"
-                ? "Só salva se você clicar no botão. Vai guardar o fundo e o destaque que estão ativos agora."
+                ? "Só salva se você clicar no botão. Guarda tudo que está ativo agora: cores, destaque, fontes, tamanho, cores por tipo e brilho."
                 : "Ative o tema Personalizado (e ajuste as cores) pra poder salvar."}
             </p>
 
@@ -638,6 +681,7 @@ export default function PersonalizarPage() {
                     theme === "custom" &&
                     customBg.toLowerCase() === t.bg.toLowerCase() &&
                     customAccent.toLowerCase() === t.ac.toLowerCase();
+                  const titleLabel = FONTS.find((f) => f.key === t.font);
                   return (
                     <div
                       key={t.id}
@@ -655,12 +699,19 @@ export default function PersonalizarPage() {
                           style={{ backgroundColor: t.ac, borderColor: t.bg }}
                         />
                       </span>
-                      <span className="min-w-0 flex-1 text-sm text-bone truncate">
-                        {t.name}
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm text-bone truncate">
+                          {t.name}
+                        </span>
+                        {titleLabel && (
+                          <span className="block text-xs text-mute truncate">
+                            {titleLabel.label}
+                          </span>
+                        )}
                       </span>
                       <button
                         type="button"
-                        onClick={() => pickCustom(t.bg, t.ac)}
+                        onClick={() => applyMyTheme(t)}
                         className="shrink-0 px-3 py-1 rounded-full text-xs border border-line text-mute hover:text-bone transition-colors"
                       >
                         Aplicar
