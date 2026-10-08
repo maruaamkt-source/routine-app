@@ -151,17 +151,29 @@ export const metadata = {
 // Roda antes da página aparecer: lê a escolha salva (ou a preferência do
 // sistema na primeira vez) e aplica data-theme, data-accent, data-font,
 // data-body e data-size no <html>. Evita o "piscar".
+// Se o tema salvo for "custom" (Personalizado), aplica as cores guardadas.
 const themeScript = `
 (function () {
   try {
     var d = document.documentElement;
     var t = localStorage.getItem("theme");
-    if (t !== "light" && t !== "dark") {
-      t = window.matchMedia("(prefers-color-scheme: light)").matches
-        ? "light"
-        : "dark";
+    var done = false;
+    if (t === "custom") {
+      var c = JSON.parse(localStorage.getItem("custom"));
+      if (c && c.vars) {
+        for (var k in c.vars) d.style.setProperty(k, c.vars[k]);
+        d.setAttribute("data-theme", c.dark ? "dark" : "light");
+        done = true;
+      }
     }
-    d.setAttribute("data-theme", t);
+    if (!done) {
+      if (t !== "light" && t !== "dark") {
+        t = window.matchMedia("(prefers-color-scheme: light)").matches
+          ? "light"
+          : "dark";
+      }
+      d.setAttribute("data-theme", t);
+    }
     var a = localStorage.getItem("accent");
     if (a) d.setAttribute("data-accent", a);
     var f = localStorage.getItem("font");

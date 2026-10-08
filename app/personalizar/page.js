@@ -8,6 +8,7 @@ const THEMES = [
   { key: "dark", label: "Escuro" },
   { key: "light", label: "Claro" },
   { key: "auto", label: "Automático" },
+  { key: "custom", label: "Personalizado" },
 ];
 
 const ACCENTS = [
@@ -44,7 +45,114 @@ const SIZES = [
   { key: "grande", label: "Grande" },
 ];
 
+// ---------- Cores personalizadas ----------
+const DEFAULT_BG = "#000000";
+const DEFAULT_ACCENT = "#d9a65c";
+
+const CUSTOM_VAR_KEYS = [
+  "--ink",
+  "--bone",
+  "--surface",
+  "--panel",
+  "--line",
+  "--mute",
+  "--ember",
+  "--glow",
+  "--glow-a",
+  "--glow-b",
+  "--grain",
+];
+
+const LIGHT_TEXT = [242, 239, 233];
+const DARK_TEXT = [30, 27, 22];
+
+function hexToRgb(hex) {
+  const h = hex.replace("#", "");
+  return [
+    parseInt(h.slice(0, 2), 16),
+    parseInt(h.slice(2, 4), 16),
+    parseInt(h.slice(4, 6), 16),
+  ];
+}
+
+function luminance(rgb) {
+  const f = (c) => {
+    const v = c / 255;
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * f(rgb[0]) + 0.7152 * f(rgb[1]) + 0.0722 * f(rgb[2]);
+}
+
+function contrast(a, b) {
+  const la = luminance(a);
+  const lb = luminance(b);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+
+function mix(a, b, t) {
+  return a.map((v, i) => Math.round(v + (b[i] - v) * t));
+}
+
+// A partir do fundo e do destaque, calcula todas as cores do app
+function buildCustom(bgHex, accentHex) {
+  const bg = hexToRgb(bgHex);
+  let ac = hexToRgb(accentHex);
+  const white = [255, 255, 255];
+
+  // Texto claro ou escuro, o que tiver mais contraste com o fundo
+  const dark = contrast(bg, LIGHT_TEXT) >= contrast(bg, DARK_TEXT);
+  const bone = dark ? LIGHT_TEXT : DARK_TEXT;
+
+  const surface = dark ? mix(bg, white, 0.07) : mix(bg, white, 0.5);
+  const panel = dark ? mix(bg, white, 0.04) : mix(bg, white, 0.7);
+  const line = mix(bg, bone, 0.16);
+  const mute = mix(bg, bone, 0.58);
+
+  // Se o destaque ficar parecido demais com o fundo, empurra em direção ao texto
+  let i = 0;
+  while (contrast(ac, bg) < 3 && i < 20) {
+    ac = mix(ac, bone, 0.1);
+    i++;
+  }
+
+  const s = (c) => c.join(" ");
+  const vars = {
+    "--ink": s(bg),
+    "--bone": s(bone),
+    "--surface": s(surface),
+    "--panel": s(panel),
+    "--line": s(line),
+    "--mute": s(mute),
+    "--ember": s(ac),
+    "--glow": s(ac),
+    "--glow-a": dark ? "0.28" : "0.05",
+    "--glow-b": dark ? "0.16" : "0.16",
+    "--grain": "0.03",
+  };
+  return { dark, vars };
+}
+
+function applyCustom(bg, ac) {
+  const { dark, vars } = buildCustom(bg, ac);
+  const root = document.documentElement;
+  Object.keys(vars).forEach((k) => root.style.setProperty(k, vars[k]));
+  root.setAttribute("data-theme", dark ? "dark" : "light");
+  try {
+    localStorage.setItem("theme", "custom");
+    localStorage.setItem("custom", JSON.stringify({ bg, ac, dark, vars }));
+  } catch (e) {}
+}
+
+function clearCustom() {
+  const root = document.documentElement;
+  CUSTOM_VAR_KEYS.forEach((k) => root.style.removeProperty(k));
+  try {
+    localStorage.removeItem("custom");
+  } catch (e) {}
+}
+
 function applyTheme(t) {
+  clearCustom();
   let real = t;
   if (t === "auto") {
     real = window.matchMedia("(prefers-color-scheme: light)").matches
@@ -121,6 +229,25 @@ function FontPicker({ title, fonts, value, defaultKey, previewClass, previewText
   );
 }
 
+// Seletor de cor (abre o círculo cromático do navegador)
+function ColorField({ label, value, onChange }) {
+  return (
+    <label className="flex items-center gap-3 cursor-pointer min-w-0">
+      <input
+        type="color"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-12 h-12 shrink-0 cursor-pointer rounded-full border border-line bg-transparent p-0 [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-full [&::-webkit-color-swatch]:border-0 [&::-moz-color-swatch]:rounded-full [&::-moz-color-swatch]:border-0"
+        aria-label={label}
+      />
+      <span className="min-w-0">
+        <span className="block text-sm text-bone">{label}</span>
+        <span className="block text-xs text-mute uppercase">{value}</span>
+      </span>
+    </label>
+  );
+}
+
 export default function PersonalizarPage() {
   const { user, loading } = useAuth();
   const [theme, setTheme] = useState("auto");
@@ -128,6 +255,8 @@ export default function PersonalizarPage() {
   const [titleFont, setTitleFont] = useState("fraunces");
   const [bodyFont, setBodyFont] = useState("inter");
   const [size, setSize] = useState("normal");
+  const [customBg, setCustomBg] = useState(DEFAULT_BG);
+  const [customAccent, setCustomAccent] = useState(DEFAULT_ACCENT);
 
   useEffect(() => {
     try {
@@ -136,10 +265,40 @@ export default function PersonalizarPage() {
       setTitleFont(localStorage.getItem("font") || "fraunces");
       setBodyFont(localStorage.getItem("bodyfont") || "inter");
       setSize(localStorage.getItem("size") || "normal");
+      const c = JSON.parse(localStorage.getItem("custom"));
+      if (c && c.bg && c.ac) {
+        setCustomBg(c.bg);
+        setCustomAccent(c.ac);
+      }
     } catch (e) {}
   }, []);
 
   if (loading || !user) return null;
+
+  // Escolher uma cor própria ativa o tema Personalizado
+  function pickCustom(bg, ac) {
+    setCustomBg(bg);
+    setCustomAccent(ac);
+    setTheme("custom");
+    applyCustom(bg, ac);
+  }
+
+  // Clicar numa cor pronta desfaz o Personalizado (volta pro Automático)
+  function leaveCustom() {
+    if (theme === "custom") {
+      setTheme("auto");
+      applyTheme("auto");
+    }
+  }
+
+  function restoreDefault() {
+    setCustomBg(DEFAULT_BG);
+    setCustomAccent(DEFAULT_ACCENT);
+    setTheme("auto");
+    applyTheme("auto");
+    setAccent("ouro");
+    applyAccent("ouro");
+  }
 
   return (
     <div className="md:flex">
@@ -165,8 +324,12 @@ export default function PersonalizarPage() {
                   role="radio"
                   aria-checked={theme === t.key}
                   onClick={() => {
-                    setTheme(t.key);
-                    applyTheme(t.key);
+                    if (t.key === "custom") {
+                      pickCustom(customBg, customAccent);
+                    } else {
+                      setTheme(t.key);
+                      applyTheme(t.key);
+                    }
                   }}
                   className={`px-4 py-2 rounded-full text-sm border transition-colors ${
                     theme === t.key
@@ -196,6 +359,7 @@ export default function PersonalizarPage() {
                   aria-checked={accent === a.key}
                   aria-label={a.label}
                   onClick={() => {
+                    leaveCustom();
                     setAccent(a.key);
                     applyAccent(a.key);
                   }}
@@ -220,6 +384,36 @@ export default function PersonalizarPage() {
                 </button>
               ))}
             </div>
+          </div>
+
+          <div className="min-w-0 rounded-lg border border-line bg-panel p-5 md:col-span-2">
+            <h2 className="text-xs tracking-wide text-mute uppercase mb-4">
+              Cores personalizadas
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <ColorField
+                label="Cor de fundo"
+                value={customBg}
+                onChange={(v) => pickCustom(v, customAccent)}
+              />
+              <ColorField
+                label="Cor de destaque"
+                value={customAccent}
+                onChange={(v) => pickCustom(customBg, v)}
+              />
+            </div>
+            <p className="text-xs text-mute mt-4">
+              O texto, os painéis e as linhas se ajustam sozinhos pra nunca
+              ficar ilegível. Escolher uma cor aqui ativa o tema Personalizado;
+              clicar em Escuro, Claro, Automático ou numa cor pronta desfaz.
+            </p>
+            <button
+              type="button"
+              onClick={restoreDefault}
+              className="mt-4 px-4 py-2 rounded-full text-sm border border-line text-mute hover:text-bone transition-colors"
+            >
+              Restaurar padrão
+            </button>
           </div>
 
           <FontPicker
