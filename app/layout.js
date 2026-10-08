@@ -1,8 +1,22 @@
-import { Fraunces, Inter, Poppins, Lora } from "next/font/google";
+import {
+  Fraunces,
+  Inter,
+  Poppins,
+  Lora,
+  Playfair_Display,
+  Cormorant_Garamond,
+  EB_Garamond,
+  Merriweather,
+  Montserrat,
+  Nunito,
+  DM_Sans,
+  Cinzel,
+} from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/components/AuthProvider";
 import Watermark from "@/components/Watermark";
 
+// Fontes originais do app (marca d'água e título da Nav usam essas)
 const fraunces = Fraunces({
   subsets: ["latin"],
   weight: ["400", "500", "600"],
@@ -20,21 +34,35 @@ const inter = Inter({
 
 // Fontes opcionais (escolhidas em Personalizar). preload: false = só baixam
 // se a pessoa realmente usar, então não pesam o app.
-const poppins = Poppins({
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  variable: "--font-poppins",
-  display: "swap",
-  preload: false,
-});
+const opt = { subsets: ["latin"], display: "swap", preload: false };
 
-const lora = Lora({
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  variable: "--font-lora",
-  display: "swap",
-  preload: false,
-});
+const poppins = Poppins({ ...opt, weight: ["400", "500", "600"], variable: "--font-poppins" });
+const lora = Lora({ ...opt, weight: ["400", "500", "600"], variable: "--font-lora" });
+const playfair = Playfair_Display({ ...opt, weight: ["400", "500", "600"], variable: "--font-playfair" });
+const cormorant = Cormorant_Garamond({ ...opt, weight: ["400", "500", "600"], variable: "--font-cormorant" });
+const garamond = EB_Garamond({ ...opt, weight: ["400", "500", "600"], variable: "--font-garamond" });
+const merriweather = Merriweather({ ...opt, weight: ["400", "700"], variable: "--font-merriweather" });
+const montserrat = Montserrat({ ...opt, weight: ["400", "500", "600"], variable: "--font-montserrat" });
+const nunito = Nunito({ ...opt, weight: ["400", "500", "600"], variable: "--font-nunito" });
+const dmsans = DM_Sans({ ...opt, weight: ["400", "500", "600"], variable: "--font-dmsans" });
+const cinzel = Cinzel({ ...opt, weight: ["400", "500", "600"], variable: "--font-cinzel" });
+
+const fontVars = [
+  fraunces,
+  inter,
+  poppins,
+  lora,
+  playfair,
+  cormorant,
+  garamond,
+  merriweather,
+  montserrat,
+  nunito,
+  dmsans,
+  cinzel,
+]
+  .map((f) => f.variable)
+  .join(" ");
 
 export const metadata = {
   title: "Routine",
@@ -83,11 +111,7 @@ export const viewport = {
 
 export default function RootLayout({ children }) {
   return (
-    <html
-      lang="pt-BR"
-      className={`${fraunces.variable} ${inter.variable} ${poppins.variable} ${lora.variable}`}
-      suppressHydrationWarning
-    >
+    <html lang="pt-BR" className={fontVars} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>

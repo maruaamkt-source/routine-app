@@ -18,17 +18,25 @@ const ACCENTS = [
   { key: "roxo", label: "Roxo", color: "rgb(170 140 220)" },
 ];
 
-const TITLE_FONTS = [
-  { key: "fraunces", label: "Fraunces (padrão)", css: "var(--font-fraunces), Georgia, serif" },
-  { key: "inter", label: "Inter", css: "var(--font-inter), system-ui, sans-serif" },
-  { key: "poppins", label: "Poppins", css: "var(--font-poppins), system-ui, sans-serif" },
+// Lista de fontes. Pra adicionar uma nova: declarar no layout.js + globals.css + aqui.
+const FONT_GROUPS = ["Serifadas", "Sem serifa", "Destaque"];
+
+const FONTS = [
+  { key: "fraunces", label: "Fraunces", group: "Serifadas", css: "var(--font-fraunces), Georgia, serif" },
+  { key: "playfair", label: "Playfair Display", group: "Serifadas", css: "var(--font-playfair), Georgia, serif" },
+  { key: "cormorant", label: "Cormorant Garamond", group: "Serifadas", css: "var(--font-cormorant), Georgia, serif" },
+  { key: "garamond", label: "EB Garamond", group: "Serifadas", css: "var(--font-garamond), Georgia, serif" },
+  { key: "lora", label: "Lora", group: "Serifadas", css: "var(--font-lora), Georgia, serif" },
+  { key: "merriweather", label: "Merriweather", group: "Serifadas", css: "var(--font-merriweather), Georgia, serif" },
+  { key: "inter", label: "Inter", group: "Sem serifa", css: "var(--font-inter), system-ui, sans-serif" },
+  { key: "poppins", label: "Poppins", group: "Sem serifa", css: "var(--font-poppins), system-ui, sans-serif" },
+  { key: "montserrat", label: "Montserrat", group: "Sem serifa", css: "var(--font-montserrat), system-ui, sans-serif" },
+  { key: "nunito", label: "Nunito", group: "Sem serifa", css: "var(--font-nunito), system-ui, sans-serif" },
+  { key: "dmsans", label: "DM Sans", group: "Sem serifa", css: "var(--font-dmsans), system-ui, sans-serif" },
+  { key: "cinzel", label: "Cinzel", group: "Destaque", css: "var(--font-cinzel), Georgia, serif", titleOnly: true },
 ];
 
-const BODY_FONTS = [
-  { key: "inter", label: "Inter (padrão)", css: "var(--font-inter), system-ui, sans-serif" },
-  { key: "poppins", label: "Poppins", css: "var(--font-poppins), system-ui, sans-serif" },
-  { key: "lora", label: "Lora", css: "var(--font-lora), Georgia, serif" },
-];
+const BODY_FONTS = FONTS.filter((f) => !f.titleOnly);
 
 const SIZES = [
   { key: "pequeno", label: "Pequeno" },
@@ -62,6 +70,55 @@ function applyAttr(attr, storageKey, value) {
   try {
     localStorage.setItem(storageKey, value);
   } catch (e) {}
+}
+
+// Cartão com a lista de fontes agrupada e com prévia
+function FontPicker({ title, fonts, value, defaultKey, previewClass, previewText, onPick }) {
+  return (
+    <div className="min-w-0 rounded-lg border border-line bg-panel p-5 md:col-span-2">
+      <h2 className="text-xs tracking-wide text-mute uppercase mb-4">{title}</h2>
+      {FONT_GROUPS.map((group) => {
+        const list = fonts.filter((f) => f.group === group);
+        if (list.length === 0) return null;
+        return (
+          <div key={group} className="mb-5 last:mb-0">
+            <p className="text-xs text-mute mb-2">{group}</p>
+            <div
+              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2"
+              role="radiogroup"
+              aria-label={title}
+            >
+              {list.map((f) => (
+                <button
+                  key={f.key}
+                  type="button"
+                  role="radio"
+                  aria-checked={value === f.key}
+                  onClick={() => onPick(f.key)}
+                  className={`min-w-0 text-left px-4 py-3 rounded-lg border transition-colors ${
+                    value === f.key
+                      ? "border-ember bg-ember/10"
+                      : "border-line hover:border-mute"
+                  }`}
+                >
+                  <span
+                    className={`block text-bone truncate ${previewClass}`}
+                    style={{ fontFamily: f.css }}
+                  >
+                    {previewText}
+                  </span>
+                  <span className="block text-xs text-mute mt-1">
+                    {f.label}
+                    {f.key === defaultKey ? " (padrão)" : ""}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 export default function PersonalizarPage() {
@@ -165,71 +222,31 @@ export default function PersonalizarPage() {
             </div>
           </div>
 
-          <div className="min-w-0 rounded-lg border border-line bg-panel p-5">
-            <h2 className="text-xs tracking-wide text-mute uppercase mb-4">
-              Fonte dos títulos
-            </h2>
-            <div className="flex flex-col gap-2" role="radiogroup" aria-label="Fonte dos títulos">
-              {TITLE_FONTS.map((f) => (
-                <button
-                  key={f.key}
-                  type="button"
-                  role="radio"
-                  aria-checked={titleFont === f.key}
-                  onClick={() => {
-                    setTitleFont(f.key);
-                    applyAttr("data-font", "font", f.key);
-                  }}
-                  className={`min-w-0 text-left px-4 py-3 rounded-lg border transition-colors ${
-                    titleFont === f.key
-                      ? "border-ember bg-ember/10"
-                      : "border-line hover:border-mute"
-                  }`}
-                >
-                  <span
-                    className="block text-xl text-bone truncate"
-                    style={{ fontFamily: f.css }}
-                  >
-                    Bom dia, sua rotina
-                  </span>
-                  <span className="block text-xs text-mute mt-1">{f.label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
+          <FontPicker
+            title="Fonte dos títulos"
+            fonts={FONTS}
+            value={titleFont}
+            defaultKey="fraunces"
+            previewClass="text-xl"
+            previewText="Bom dia, sua rotina"
+            onPick={(key) => {
+              setTitleFont(key);
+              applyAttr("data-font", "font", key);
+            }}
+          />
 
-          <div className="min-w-0 rounded-lg border border-line bg-panel p-5">
-            <h2 className="text-xs tracking-wide text-mute uppercase mb-4">
-              Fonte do corpo
-            </h2>
-            <div className="flex flex-col gap-2" role="radiogroup" aria-label="Fonte do corpo">
-              {BODY_FONTS.map((f) => (
-                <button
-                  key={f.key}
-                  type="button"
-                  role="radio"
-                  aria-checked={bodyFont === f.key}
-                  onClick={() => {
-                    setBodyFont(f.key);
-                    applyAttr("data-body", "bodyfont", f.key);
-                  }}
-                  className={`min-w-0 text-left px-4 py-3 rounded-lg border transition-colors ${
-                    bodyFont === f.key
-                      ? "border-ember bg-ember/10"
-                      : "border-line hover:border-mute"
-                  }`}
-                >
-                  <span
-                    className="block text-sm text-bone"
-                    style={{ fontFamily: f.css }}
-                  >
-                    Organize sua rotina, um dia de cada vez.
-                  </span>
-                  <span className="block text-xs text-mute mt-1">{f.label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
+          <FontPicker
+            title="Fonte do corpo"
+            fonts={BODY_FONTS}
+            value={bodyFont}
+            defaultKey="inter"
+            previewClass="text-sm"
+            previewText="Organize sua rotina, um dia de cada vez."
+            onPick={(key) => {
+              setBodyFont(key);
+              applyAttr("data-body", "bodyfont", key);
+            }}
+          />
 
           <div className="min-w-0 rounded-lg border border-line bg-panel p-5 md:col-span-2">
             <h2 className="text-xs tracking-wide text-mute uppercase mb-4">

@@ -199,20 +199,31 @@ button {
 
 /* ---------- Fontes (escolhidas em Personalizar) ---------- */
 /* Títulos (padrão: Fraunces) */
-:root[data-font="inter"] {
-  --font-title: var(--font-inter);
-}
-:root[data-font="poppins"] {
-  --font-title: var(--font-poppins);
-}
+:root[data-font="fraunces"] { --font-title: var(--font-fraunces); }
+:root[data-font="inter"] { --font-title: var(--font-inter); }
+:root[data-font="poppins"] { --font-title: var(--font-poppins); }
+:root[data-font="lora"] { --font-title: var(--font-lora); }
+:root[data-font="playfair"] { --font-title: var(--font-playfair); }
+:root[data-font="cormorant"] { --font-title: var(--font-cormorant); }
+:root[data-font="garamond"] { --font-title: var(--font-garamond); }
+:root[data-font="merriweather"] { --font-title: var(--font-merriweather); }
+:root[data-font="montserrat"] { --font-title: var(--font-montserrat); }
+:root[data-font="nunito"] { --font-title: var(--font-nunito); }
+:root[data-font="dmsans"] { --font-title: var(--font-dmsans); }
+:root[data-font="cinzel"] { --font-title: var(--font-cinzel); }
 
 /* Corpo (padrão: Inter) */
-:root[data-body="poppins"] {
-  --font-body: var(--font-poppins);
-}
-:root[data-body="lora"] {
-  --font-body: var(--font-lora);
-}
+:root[data-body="fraunces"] { --font-body: var(--font-fraunces); }
+:root[data-body="inter"] { --font-body: var(--font-inter); }
+:root[data-body="poppins"] { --font-body: var(--font-poppins); }
+:root[data-body="lora"] { --font-body: var(--font-lora); }
+:root[data-body="playfair"] { --font-body: var(--font-playfair); }
+:root[data-body="cormorant"] { --font-body: var(--font-cormorant); }
+:root[data-body="garamond"] { --font-body: var(--font-garamond); }
+:root[data-body="merriweather"] { --font-body: var(--font-merriweather); }
+:root[data-body="montserrat"] { --font-body: var(--font-montserrat); }
+:root[data-body="nunito"] { --font-body: var(--font-nunito); }
+:root[data-body="dmsans"] { --font-body: var(--font-dmsans); }
 
 /* Tamanho do texto (tudo no Tailwind é em rem, então escala junto) */
 :root[data-size="pequeno"] {
