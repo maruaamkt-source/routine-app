@@ -18,8 +18,9 @@ module.exports = {
         white: "rgb(var(--bone) / <alpha-value>)",
       },
       fontFamily: {
-        display: ["var(--font-fraunces)", "Georgia", "serif"],
-        sans: ["var(--font-inter)", "system-ui", "sans-serif"],
+        display: ["var(--font-title)", "Georgia", "serif"],
+        serif: ["var(--font-title)", "Georgia", "serif"],
+        sans: ["var(--font-body)", "system-ui", "sans-serif"],
       },
       borderRadius: {
         none: "0px",
