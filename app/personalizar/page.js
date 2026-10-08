@@ -11,6 +11,13 @@ const THEMES = [
   { key: "custom", label: "Personalizado" },
 ];
 
+// Temas prontos: cada um é só um par fundo + destaque (o resto se calcula sozinho)
+const PRESETS = [
+  { key: "papel", label: "Papel antigo", bg: "#efe6d0", ac: "#8a5a2b" },
+  { key: "meianoite", label: "Meia-noite", bg: "#0b1220", ac: "#7aa7e6" },
+  { key: "floresta", label: "Floresta", bg: "#0d1a14", ac: "#6fae7b" },
+];
+
 const ACCENTS = [
   { key: "ouro", label: "Dourado", color: "rgb(217 166 92)" },
   { key: "azul", label: "Azul", color: "rgb(107 160 230)" },
@@ -468,6 +475,56 @@ export default function PersonalizarPage() {
                 </button>
               ))}
             </div>
+          </div>
+
+          <div className="min-w-0 rounded-lg border border-line bg-panel p-5 md:col-span-2">
+            <h2 className="text-xs tracking-wide text-mute uppercase mb-4">
+              Temas prontos
+            </h2>
+            <div
+              className="grid grid-cols-1 sm:grid-cols-3 gap-2"
+              role="radiogroup"
+              aria-label="Temas prontos"
+            >
+              {PRESETS.map((p) => {
+                const active =
+                  theme === "custom" &&
+                  customBg.toLowerCase() === p.bg &&
+                  customAccent.toLowerCase() === p.ac;
+                return (
+                  <button
+                    key={p.key}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    onClick={() => pickCustom(p.bg, p.ac)}
+                    className={`min-w-0 flex items-center gap-3 text-left px-4 py-3 rounded-lg border transition-colors ${
+                      active
+                        ? "border-ember bg-ember/10"
+                        : "border-line hover:border-mute"
+                    }`}
+                  >
+                    <span className="relative shrink-0 w-10 h-10">
+                      <span
+                        className="absolute inset-0 rounded-full border border-line"
+                        style={{ backgroundColor: p.bg }}
+                      />
+                      <span
+                        className="absolute right-0 bottom-0 w-5 h-5 rounded-full border-2"
+                        style={{ backgroundColor: p.ac, borderColor: p.bg }}
+                      />
+                    </span>
+                    <span className="min-w-0 text-sm text-bone truncate">
+                      {p.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs text-mute mt-3">
+              Escolher um tema pronto ativa o Personalizado com essas cores. Dá
+              pra ajustar as cores logo abaixo se quiser.
+            </p>
           </div>
 
           <div className="min-w-0 rounded-lg border border-line bg-panel p-5 md:col-span-2">
