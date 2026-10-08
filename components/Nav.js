@@ -14,6 +14,21 @@ const LINKS = [
   { href: "/history", label: "Histórico" },
 ];
 
+// Variáveis que o tema Personalizado aplica inline no <html>
+const CUSTOM_VARS = [
+  "--ink",
+  "--bone",
+  "--surface",
+  "--panel",
+  "--line",
+  "--mute",
+  "--ember",
+  "--glow",
+  "--glow-a",
+  "--glow-b",
+  "--grain",
+];
+
 function isActive(pathname, href) {
   if (href === "/") return pathname === "/";
   return pathname === href || pathname.startsWith(href + "/");
@@ -66,7 +81,15 @@ function ThemeToggle({ withLabel = false }) {
 
   function toggle() {
     const next = theme === "light" ? "dark" : "light";
-    document.documentElement.setAttribute("data-theme", next);
+    const root = document.documentElement;
+
+    // Desfaz o tema Personalizado (vars inline + chave "custom")
+    CUSTOM_VARS.forEach((v) => root.style.removeProperty(v));
+    try {
+      localStorage.removeItem("custom");
+    } catch (e) {}
+
+    root.setAttribute("data-theme", next);
     try {
       localStorage.setItem("theme", next);
     } catch (e) {}

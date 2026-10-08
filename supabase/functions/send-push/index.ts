@@ -72,6 +72,11 @@ Deno.serve(async (req) => {
       }
     }
 
+    // LOG: resumo de cada execução (pode remover depois dos testes)
+    console.log(
+      `[send-push] agora=${todayISO} ${hhmm} | daqui10=${aheadISO} ${aheadHHMM} | tarefas_na_janela=${tasks?.length ?? 0} | avisos=${notices.length}`
+    );
+
     if (notices.length === 0) {
       return new Response(JSON.stringify({ sent: 0 }), { status: 200 });
     }
@@ -84,7 +89,12 @@ Deno.serve(async (req) => {
         .select("*")
         .eq("user_id", notice.task.user_id);
 
-      if (subsError || !subs) continue;
+      if (subsError || !subs) {
+        console.error("[send-push] erro ao buscar inscrições:", subsError);
+        continue;
+      }
+
+      console.log(`[send-push] ${notice.tag} -> ${subs.length} inscrição(ões)`);
 
       for (const sub of subs) {
         const pushSubscription = {
@@ -107,12 +117,20 @@ Deno.serve(async (req) => {
             urgency: "high",
           });
           sentCount++;
+          console.log(
+            `[send-push] ENVIADO ${notice.tag} -> ${String(sub.endpoint).slice(0, 45)}...`
+          );
         } catch (err) {
           // Se a subscription expirou/foi revogada, remove do banco
           if (err.statusCode === 404 || err.statusCode === 410) {
+            console.log(
+              `[send-push] inscrição expirada (${err.statusCode}), removendo: ${sub.id}`
+            );
             await supabase.from("push_subscriptions").delete().eq("id", sub.id);
           } else {
-            console.error("Erro ao enviar push:", err);
+            console.error(
+              `[send-push] ERRO ao enviar ${notice.tag}: status=${err.statusCode} corpo=${err.body}`
+            );
           }
         }
       }
