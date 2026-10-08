@@ -16,6 +16,12 @@ const PRESETS = [
   { key: "papel", label: "Papel antigo", bg: "#efe6d0", ac: "#8a5a2b" },
   { key: "meianoite", label: "Meia-noite", bg: "#0b1220", ac: "#7aa7e6" },
   { key: "floresta", label: "Floresta", bg: "#0d1a14", ac: "#6fae7b" },
+  { key: "bordo", label: "Bordô", bg: "#1a0b10", ac: "#cd6478" },
+  { key: "oceano", label: "Oceano", bg: "#08161c", ac: "#4fb3bf" },
+  { key: "noitereal", label: "Noite real", bg: "#14101f", ac: "#aa8cdc" },
+  { key: "alvorada", label: "Alvorada", bg: "#f6e9e0", ac: "#b4532a" },
+  { key: "nevoa", label: "Névoa", bg: "#e6ebef", ac: "#3d5a80" },
+  { key: "oliveira", label: "Oliveira", bg: "#e8ecdc", ac: "#5a6b2e" },
 ];
 
 const ACCENTS = [
