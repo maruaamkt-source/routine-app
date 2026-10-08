@@ -250,4 +250,9 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   height: 100%;
   opacity: 0;
   cursor: pointer;
+  
+/* Brilho do fundo desligado (escolhido em Personalizar) */
+:root[data-glow="off"] .ambient-bg {
+  display: none;
+}
 }

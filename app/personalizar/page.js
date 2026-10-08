@@ -302,6 +302,7 @@ export default function PersonalizarPage() {
   const [customBg, setCustomBg] = useState(DEFAULT_BG);
   const [customAccent, setCustomAccent] = useState(DEFAULT_ACCENT);
   const [kinds, setKinds] = useState(defaultKinds());
+  const [glow, setGlow] = useState(true);
 
   useEffect(() => {
     try {
@@ -310,6 +311,7 @@ export default function PersonalizarPage() {
       setTitleFont(localStorage.getItem("font") || "fraunces");
       setBodyFont(localStorage.getItem("bodyfont") || "inter");
       setSize(localStorage.getItem("size") || "normal");
+      setGlow(localStorage.getItem("glow") !== "off");
       const c = JSON.parse(localStorage.getItem("custom"));
       if (c && c.bg && c.ac) {
         setCustomBg(c.bg);
@@ -358,6 +360,22 @@ export default function PersonalizarPage() {
   function restoreKinds() {
     setKinds(defaultKinds());
     resetKinds();
+  }
+
+  // Brilho do fundo ligado/desligado
+  function toggleGlow() {
+    const next = !glow;
+    setGlow(next);
+    const root = document.documentElement;
+    try {
+      if (next) {
+        root.removeAttribute("data-glow");
+        localStorage.removeItem("glow");
+      } else {
+        root.setAttribute("data-glow", "off");
+        localStorage.setItem("glow", "off");
+      }
+    } catch (e) {}
   }
 
   return (
@@ -513,6 +531,37 @@ export default function PersonalizarPage() {
             >
               Restaurar cores dos tipos
             </button>
+          </div>
+
+          <div className="min-w-0 rounded-lg border border-line bg-panel p-5 md:col-span-2">
+            <h2 className="text-xs tracking-wide text-mute uppercase mb-4">
+              Brilho do fundo
+            </h2>
+            <div className="flex items-center justify-between gap-4">
+              <p className="min-w-0 text-sm text-bone">
+                {glow ? "Ligado" : "Desligado"}
+              </p>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={glow}
+                aria-label="Brilho do fundo"
+                onClick={toggleGlow}
+                className={`relative shrink-0 w-12 h-7 rounded-full border transition-colors ${
+                  glow ? "border-ember bg-ember/20" : "border-line bg-transparent"
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform ${
+                    glow ? "translate-x-5 bg-ember" : "translate-x-0 bg-mute"
+                  }`}
+                />
+              </button>
+            </div>
+            <p className="text-xs text-mute mt-3">
+              Liga ou desliga o brilho suave nos cantos da tela. A textura de
+              grão continua.
+            </p>
           </div>
 
           <FontPicker
