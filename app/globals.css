@@ -24,6 +24,10 @@
   --k-habito: 111 174 123;
   --k-compromisso: 107 143 214;
   --k-lembrete: 154 130 201;
+
+  /* Fontes padrão (trocadas em Personalizar) */
+  --font-title: var(--font-fraunces);
+  --font-body: var(--font-inter);
 }
 
 /* Tema claro: papel de Bíblia, tinta escura e dourado fechado */
@@ -192,6 +196,35 @@ button {
   --ember: 105 70 160;
   --glow: 140 110 190;
 }
+
+/* ---------- Fontes (escolhidas em Personalizar) ---------- */
+/* Títulos (padrão: Fraunces) */
+:root[data-font="inter"] {
+  --font-title: var(--font-inter);
+}
+:root[data-font="poppins"] {
+  --font-title: var(--font-poppins);
+}
+
+/* Corpo (padrão: Inter) */
+:root[data-body="poppins"] {
+  --font-body: var(--font-poppins);
+}
+:root[data-body="lora"] {
+  --font-body: var(--font-lora);
+}
+
+/* Tamanho do texto (tudo no Tailwind é em rem, então escala junto) */
+:root[data-size="pequeno"] {
+  font-size: 15px;
+}
+:root[data-size="normal"] {
+  font-size: 16px;
+}
+:root[data-size="grande"] {
+  font-size: 18px;
+}
+
 input[type="time"],
 input[type="date"] {
   position: relative;

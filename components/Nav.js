@@ -104,10 +104,19 @@ export default function Nav() {
       {/* Desktop sidebar */}
       <aside className="hidden md:flex md:flex-col md:justify-between md:w-64 md:h-screen md:sticky md:top-0 px-8 py-10 border-r border-line">
         <div>
-          <h1 className="tracked text-2xl font-serif text-bone mb-1">
+          {/* Título travado: sempre Fraunces/Inter, não muda com a personalização */}
+          <h1
+            className="tracked text-2xl text-bone mb-1"
+            style={{ fontFamily: "var(--font-fraunces), Georgia, serif" }}
+          >
             ROUTINE
           </h1>
-          <p className="text-mute text-sm mb-8">sua rotina, no controle</p>
+          <p
+            className="text-mute text-sm mb-8"
+            style={{ fontFamily: "var(--font-inter), system-ui, sans-serif" }}
+          >
+            sua rotina, no controle
+          </p>
 
           <nav className="flex flex-col gap-1">
             {LINKS.map((link) => {

@@ -1,4 +1,4 @@
-import { Fraunces, Inter } from "next/font/google";
+import { Fraunces, Inter, Poppins, Lora } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/components/AuthProvider";
 import Watermark from "@/components/Watermark";
@@ -18,6 +18,24 @@ const inter = Inter({
   display: "swap",
 });
 
+// Fontes opcionais (escolhidas em Personalizar). preload: false = só baixam
+// se a pessoa realmente usar, então não pesam o app.
+const poppins = Poppins({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-poppins",
+  display: "swap",
+  preload: false,
+});
+
+const lora = Lora({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-lora",
+  display: "swap",
+  preload: false,
+});
+
 export const metadata = {
   title: "Routine",
   description: "Organize sua rotina do dia a dia.",
@@ -34,19 +52,27 @@ export const metadata = {
 };
 
 // Roda antes da página aparecer: lê a escolha salva (ou a preferência do
-// sistema na primeira vez) e aplica data-theme no <html>. Evita o "piscar".
+// sistema na primeira vez) e aplica data-theme, data-accent, data-font,
+// data-body e data-size no <html>. Evita o "piscar".
 const themeScript = `
 (function () {
   try {
+    var d = document.documentElement;
     var t = localStorage.getItem("theme");
     if (t !== "light" && t !== "dark") {
       t = window.matchMedia("(prefers-color-scheme: light)").matches
         ? "light"
         : "dark";
     }
-    document.documentElement.setAttribute("data-theme", t);
+    d.setAttribute("data-theme", t);
     var a = localStorage.getItem("accent");
-    if (a) document.documentElement.setAttribute("data-accent", a); 
+    if (a) d.setAttribute("data-accent", a);
+    var f = localStorage.getItem("font");
+    if (f) d.setAttribute("data-font", f);
+    var b = localStorage.getItem("bodyfont");
+    if (b) d.setAttribute("data-body", b);
+    var s = localStorage.getItem("size");
+    if (s) d.setAttribute("data-size", s);
   } catch (e) {}
 })();
 `;
@@ -59,7 +85,7 @@ export default function RootLayout({ children }) {
   return (
     <html
       lang="pt-BR"
-      className={`${fraunces.variable} ${inter.variable}`}
+      className={`${fraunces.variable} ${inter.variable} ${poppins.variable} ${lora.variable}`}
       suppressHydrationWarning
     >
       <head>
