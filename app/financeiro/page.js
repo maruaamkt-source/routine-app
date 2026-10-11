@@ -220,6 +220,7 @@ export default function FinanceiroPage() {
   const [fixos, setFixos] = useState([]);
   const [pagos, setPagos] = useState([]); // ids dos fixos pagos neste mês
   const [parcelas, setParcelas] = useState([]);
+  const [pagosParc, setPagosParc] = useState([]); // ids das parcelas pagas neste mês
   const [variaveis, setVariaveis] = useState([]);
   const [metas, setMetas] = useState([]);
   const [depositos, setDepositos] = useState([]);
@@ -249,7 +250,7 @@ export default function FinanceiroPage() {
 
     const { ini, fim } = limitesDoMes();
 
-    const [inc, fix, vars, gls, dps, ins, pay] = await Promise.all([
+    const [inc, fix, vars, gls, dps, ins, pay, ipay] = await Promise.all([
       supabase
         .from("income")
         .select("*")
@@ -288,6 +289,11 @@ export default function FinanceiroPage() {
         .select("fixed_expense_id")
         .eq("user_id", user.id)
         .eq("ref_month", mesAtualISO()),
+      supabase
+        .from("installment_payments")
+        .select("installment_id")
+        .eq("user_id", user.id)
+        .eq("ref_month", mesAtualISO()),
     ]);
 
     if (
@@ -297,7 +303,8 @@ export default function FinanceiroPage() {
       gls.error ||
       dps.error ||
       ins.error ||
-      pay.error
+      pay.error ||
+      ipay.error
     ) {
       setErro(
         "Não foi possível carregar seus dados. Confira se as tabelas foram criadas."
@@ -313,6 +320,7 @@ export default function FinanceiroPage() {
     const depositosDb = (dps.data ?? []).map(fromDeposit);
     const parcelasDb = (ins.data ?? []).map(fromInstallment);
     const pagosDb = (pay.data ?? []).map((r) => r.fixed_expense_id);
+    const pagosParcDb = (ipay.data ?? []).map((r) => r.installment_id);
 
     // Migração única: se o banco está vazio e existe algo salvo no aparelho
     // pela primeira versão, envia para o Supabase e limpa o local.
@@ -369,6 +377,7 @@ export default function FinanceiroPage() {
     setDepositos(depositosDb);
     setParcelas(parcelasDb);
     setPagos(pagosDb);
+    setPagosParc(pagosParcDb);
     setErro("");
     setCarregado(true);
   }, [user]);
@@ -424,7 +433,7 @@ export default function FinanceiroPage() {
 
   // Cada parcelamento com a parcela deste mês, o status e o que falta quitar
   // ativa = está rodando agora | futura = ainda não começou | quitada = acabou
-  // restantes conta a parcela deste mês (o app não controla se já foi paga)
+  // Se a parcela deste mês está marcada como paga, ela sai da conta de "restam"
   const parcelasView = useMemo(() => {
     const hoje = new Date();
     const mesAtual = hoje.getFullYear() * 12 + hoje.getMonth();
@@ -437,21 +446,24 @@ export default function FinanceiroPage() {
         if (numero < 1) status = "futura";
         else if (numero > p.total) status = "quitada";
 
+        const paga = status === "ativa" && pagosParc.includes(p.id);
+
         let restantes = 0;
-        if (status === "ativa") restantes = p.total - numero + 1;
+        if (status === "ativa") restantes = p.total - numero + 1 - (paga ? 1 : 0);
         else if (status === "futura") restantes = p.total;
 
         return {
           ...p,
           numero,
           status,
+          paga,
           inicioLabel: `${pad(sm)}/${sy}`,
           restantes,
           totalRestante: restantes * p.valor,
         };
       })
       .sort((a, b) => ordem[a.status] - ordem[b.status]);
-  }, [parcelas]);
+  }, [parcelas, pagosParc]);
 
   const totalParcelasMes = useMemo(
     () =>
@@ -560,6 +572,37 @@ export default function FinanceiroPage() {
     }
   }
 
+  // Marca/desmarca a parcela deste mês como paga
+  async function togglePagoParcela(id) {
+    const jaPaga = pagosParc.includes(id);
+
+    if (jaPaga) {
+      const { error } = await supabase
+        .from("installment_payments")
+        .delete()
+        .eq("installment_id", id)
+        .eq("ref_month", mesAtualISO());
+      if (error) {
+        setErro("Não foi possível atualizar. Tente de novo.");
+        return;
+      }
+      setErro("");
+      setPagosParc((l) => l.filter((x) => x !== id));
+    } else {
+      const { error } = await supabase.from("installment_payments").insert({
+        user_id: user.id,
+        installment_id: id,
+        ref_month: mesAtualISO(),
+      });
+      if (error) {
+        setErro("Não foi possível atualizar. Tente de novo.");
+        return;
+      }
+      setErro("");
+      setPagosParc((l) => [...l, id]);
+    }
+  }
+
   async function addParcela() {
     const valor = toNumber(pValor);
     if (!pNome.trim() || valor <= 0) return;
@@ -603,6 +646,7 @@ export default function FinanceiroPage() {
       return;
     }
     setParcelas((l) => l.filter((p) => p.id !== id));
+    setPagosParc((l) => l.filter((x) => x !== id));
   }
 
   async function addVariavel() {
@@ -1311,26 +1355,43 @@ export default function FinanceiroPage() {
                         }
                       >
                         <div className="flex items-center justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="truncate text-sm text-bone">{p.nome}</p>
-                            <p className="text-xs text-mute">
-                              {p.status === "ativa" &&
-                                (p.restantes === 1
-                                  ? `Parcela ${p.numero} de ${p.total} · última parcela`
-                                  : `Parcela ${p.numero} de ${p.total} · restam ${p.restantes}`)}
-                              {p.status === "futura" &&
-                                `Começa em ${p.inicioLabel} · ${p.total} parcelas`}
-                              {p.status === "quitada" &&
-                                `Quitada · ${p.total} parcelas`}
-                            </p>
-                            {p.status !== "quitada" && (
-                              <p className="text-xs text-mute">
-                                Falta quitar{" "}
-                                <span className="text-bone tabular-nums">
-                                  {brl(p.totalRestante)}
-                                </span>
-                              </p>
+                          <div className="flex min-w-0 items-center gap-3">
+                            {p.status === "ativa" && (
+                              <input
+                                type="checkbox"
+                                className="checkbox"
+                                checked={p.paga}
+                                onChange={() => togglePagoParcela(p.id)}
+                                aria-label={`Marcar parcela de ${p.nome} como paga neste mês`}
+                              />
                             )}
+                            <div className="min-w-0">
+                              <p className="truncate text-sm text-bone">
+                                {p.nome}
+                              </p>
+                              <p className="text-xs text-mute">
+                                {p.status === "ativa" &&
+                                  (p.paga
+                                    ? p.restantes === 0
+                                      ? `Parcela ${p.numero} de ${p.total} · última parcela paga`
+                                      : `Parcela ${p.numero} de ${p.total} · paga neste mês · restam ${p.restantes}`
+                                    : p.restantes === 1
+                                    ? `Parcela ${p.numero} de ${p.total} · última parcela`
+                                    : `Parcela ${p.numero} de ${p.total} · restam ${p.restantes}`)}
+                                {p.status === "futura" &&
+                                  `Começa em ${p.inicioLabel} · ${p.total} parcelas`}
+                                {p.status === "quitada" &&
+                                  `Quitada · ${p.total} parcelas`}
+                              </p>
+                              {p.status !== "quitada" && p.totalRestante > 0 && (
+                                <p className="text-xs text-mute">
+                                  Falta quitar{" "}
+                                  <span className="text-bone tabular-nums">
+                                    {brl(p.totalRestante)}
+                                  </span>
+                                </p>
+                              )}
+                            </div>
                           </div>
                           <div className="flex shrink-0 items-center gap-2">
                             <span className="text-sm text-bone tabular-nums">
@@ -1420,7 +1481,9 @@ export default function FinanceiroPage() {
               </div>
               <p className="mt-2 text-xs text-mute">
                 Total = quantas parcelas tem a compra. Atual = qual parcela você
-                está pagando neste mês (deixe vazio se for a primeira).
+                está pagando neste mês (deixe vazio se for a primeira). Marque a
+                bolinha quando pagar a parcela deste mês: ela sai do "restam" e
+                do "falta quitar", e volta desmarcada no mês seguinte.
               </p>
             </div>
 
