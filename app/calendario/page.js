@@ -190,7 +190,7 @@ export default function CalendarioPage() {
   return (
     <div className="md:flex">
       <Nav />
-      <main className="flex-1 min-w-0 px-4 py-8 md:px-12 md:py-14 pb-24 md:pb-14">
+      <main className="flex-1 min-w-0 px-4 py-8 md:px-12 md:py-14 pb-14">
         <div className="flex items-start justify-between mb-6 md:mb-8">
           <div>
             <p className="text-sm text-ember uppercase tracking-wide mb-1">Calendário</p>

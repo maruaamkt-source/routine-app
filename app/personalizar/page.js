@@ -477,7 +477,7 @@ export default function PersonalizarPage() {
   return (
     <div className="md:flex">
       <Nav />
-      <main className="flex-1 min-w-0 px-6 py-10 md:px-12 md:py-14 pb-24 md:pb-14">
+      <main className="flex-1 min-w-0 px-6 py-10 md:px-12 md:py-14 pb-14">
         <h1 className="font-serif text-3xl md:text-4xl text-bone mb-1">
           Personalizar
         </h1>

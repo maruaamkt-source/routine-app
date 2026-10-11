@@ -190,6 +190,7 @@ export default function FinanceiroPage() {
   const [mNome, setMNome] = useState("");
   const [mAlvo, setMAlvo] = useState("");
   const [guardarValor, setGuardarValor] = useState({});
+  const [historicoAberto, setHistoricoAberto] = useState({}); // { metaId: true }
 
   const loadData = useCallback(async () => {
     if (!user) return;
@@ -339,15 +340,16 @@ export default function FinanceiroPage() {
       .reduce((s, d) => s + d.valor, 0);
   }, [depositos]);
 
-  // Cada meta com o total guardado (todos os meses) e o progresso
+  // Cada meta com o total guardado (todos os meses), o progresso
+  // e o histórico de depósitos (mais recente primeiro)
   const metasView = useMemo(
     () =>
       metas.map((m) => {
-        const guardado = depositos
-          .filter((d) => d.metaId === m.id)
-          .reduce((s, d) => s + d.valor, 0);
+        const doDaMeta = depositos.filter((d) => d.metaId === m.id);
+        const guardado = doDaMeta.reduce((s, d) => s + d.valor, 0);
         const pct = m.alvo > 0 ? Math.min(100, (guardado / m.alvo) * 100) : 0;
-        return { ...m, guardado, pct };
+        const historico = [...doDaMeta].reverse();
+        return { ...m, guardado, pct, historico };
       }),
     [metas, depositos]
   );
@@ -612,6 +614,28 @@ export default function FinanceiroPage() {
     setGuardarValor((g) => ({ ...g, [metaId]: "" }));
   }
 
+  // Desfaz um depósito específico de uma meta
+  async function desfazerDeposito(dep) {
+    const ok = window.confirm(
+      `Desfazer o depósito de ${brl(dep.valor)} feito em ${dataCurta(dep.data)}?`
+    );
+    if (!ok) return;
+    const { error } = await supabase
+      .from("goal_deposits")
+      .delete()
+      .eq("id", dep.id);
+    if (error) {
+      setErro("Não foi possível desfazer o depósito. Tente de novo.");
+      return;
+    }
+    setErro("");
+    setDepositos((l) => l.filter((d) => d.id !== dep.id));
+  }
+
+  function toggleHistorico(metaId) {
+    setHistoricoAberto((h) => ({ ...h, [metaId]: !h[metaId] }));
+  }
+
   if (loading || !user) return null;
 
   const comprometido =
@@ -640,7 +664,7 @@ export default function FinanceiroPage() {
   return (
     <div className="md:flex">
       <Nav />
-      <main className="flex-1 min-w-0 px-6 py-10 md:px-12 md:py-14 pb-24 md:pb-14">
+      <main className="flex-1 min-w-0 px-6 py-10 md:px-12 md:py-14 pb-14">
         <div className="mb-8">
           <p className="text-sm text-ember uppercase tracking-wide mb-1">
             {dateLabel}
@@ -1047,6 +1071,49 @@ export default function FinanceiroPage() {
                           Guardar
                         </button>
                       </div>
+
+                      {m.historico.length > 0 && (
+                        <div className="mt-3">
+                          <button
+                            onClick={() => toggleHistorico(m.id)}
+                            className="text-xs text-ember"
+                            aria-expanded={!!historicoAberto[m.id]}
+                          >
+                            {historicoAberto[m.id]
+                              ? "Esconder histórico"
+                              : `Ver histórico (${m.historico.length})`}
+                          </button>
+
+                          {historicoAberto[m.id] && (
+                            <ul className="mt-2 divide-y divide-line rounded-lg border border-line bg-surface px-3">
+                              {m.historico.map((d) => (
+                                <li
+                                  key={d.id}
+                                  className="flex items-center justify-between gap-3 py-2"
+                                >
+                                  <span className="text-xs text-mute">
+                                    {dataCurta(d.data)}
+                                  </span>
+                                  <div className="flex items-center gap-3">
+                                    <span className="text-sm text-bone tabular-nums">
+                                      {brl(d.valor)}
+                                    </span>
+                                    <button
+                                      onClick={() => desfazerDeposito(d)}
+                                      className="px-1 py-1 text-xs text-mute hover:text-ember"
+                                      aria-label={`Desfazer depósito de ${brl(
+                                        d.valor
+                                      )}`}
+                                    >
+                                      desfazer
+                                    </button>
+                                  </div>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      )}
                     </li>
                   ))}
                 </ul>
