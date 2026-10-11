@@ -7,12 +7,12 @@ import { useAuth } from "./AuthProvider";
 import InstallButton from "./InstallButton";
 
 const LINKS = [
-  { href: "/", label: "Hoje" },
-  { href: "/calendar", label: "Agenda" },
-  { href: "/calendario", label: "Calendário" },
-  { href: "/habits", label: "Hábitos" },
-  { href: "/history", label: "Histórico" },
-  { href: "/financeiro", label: "Financeiro" },
+  { href: "/", label: "Hoje", icon: "home" },
+  { href: "/calendar", label: "Agenda", icon: "agenda" },
+  { href: "/calendario", label: "Calendário", icon: "calendar" },
+  { href: "/habits", label: "Hábitos", icon: "habits" },
+  { href: "/history", label: "Histórico", icon: "history" },
+  { href: "/financeiro", label: "Financeiro", icon: "wallet" },
 ];
 
 // Variáveis que o tema Personalizado aplica inline no <html>
@@ -29,6 +29,74 @@ const CUSTOM_VARS = [
   "--glow-b",
   "--grain",
 ];
+
+const ICONS = {
+  home: <path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" />,
+  agenda: (
+    <>
+      <path d="M9 6h11M9 12h11M9 18h11" />
+      <path d="M3.5 6l1 1 2-2M3.5 12l1 1 2-2M3.5 18l1 1 2-2" />
+    </>
+  ),
+  calendar: (
+    <>
+      <rect x="3" y="4.5" width="18" height="16" rx="2" />
+      <path d="M3 9.5h18M8 2.5v4M16 2.5v4" />
+    </>
+  ),
+  habits: (
+    <>
+      <path d="M17 2l4 4-4 4" />
+      <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+      <path d="M7 22l-4-4 4-4" />
+      <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+    </>
+  ),
+  history: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </>
+  ),
+  wallet: (
+    <>
+      <rect x="3" y="6" width="18" height="14" rx="2" />
+      <path d="M3 10h18M16 15h2" />
+    </>
+  ),
+  settings: (
+    <>
+      <path d="M4 7h9M17 7h3M4 17h3M11 17h9" />
+      <circle cx="15" cy="7" r="2" />
+      <circle cx="9" cy="17" r="2" />
+    </>
+  ),
+  logout: (
+    <>
+      <path d="M9 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h4" />
+      <path d="M16 8l4 4-4 4M20 12H9" />
+    </>
+  ),
+};
+
+function NavIcon({ name }) {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className="shrink-0"
+    >
+      {ICONS[name]}
+    </svg>
+  );
+}
 
 function isActive(pathname, href) {
   if (href === "/") return pathname === "/";
@@ -72,7 +140,44 @@ function MoonIcon() {
   );
 }
 
-function ThemeToggle({ withLabel = false }) {
+function MenuIcon() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <path d="M4 7h16M4 12h16M4 17h16" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <path d="M6 6l12 12M18 6L6 18" />
+    </svg>
+  );
+}
+
+function ThemeToggle({
+  withLabel = false,
+  className = "flex items-center gap-2 text-mute hover:text-bone text-sm transition-colors",
+}) {
   const [theme, setTheme] = useState(null);
 
   // Lê o tema que o script do layout já aplicou no <html>
@@ -105,7 +210,7 @@ function ThemeToggle({ withLabel = false }) {
       onClick={toggle}
       aria-label={label}
       title={label}
-      className="flex items-center gap-2 text-mute hover:text-bone text-sm transition-colors"
+      className={className}
     >
       {theme === null ? (
         <span className="w-[18px] h-[18px]" />
@@ -119,9 +224,33 @@ function ThemeToggle({ withLabel = false }) {
   );
 }
 
+const ITEM_BASE =
+  "flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-base transition-colors";
+
 export default function Nav() {
   const pathname = usePathname();
   const { signOut } = useAuth();
+  const [open, setOpen] = useState(false);
+
+  // Fecha o menu ao trocar de página
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
+
+  // Com o menu aberto: trava o scroll da página e fecha com Esc
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
 
   return (
     <>
@@ -183,36 +312,114 @@ export default function Nav() {
         </div>
       </aside>
 
-      {/* Mobile: botão de instalar flutuante (só aparece se der pra instalar) */}
-      <div className="md:hidden fixed bottom-16 right-4 z-20">
-        <InstallButton />
-      </div>
+      {/* Mobile: espaço no topo pro botão não cobrir o conteúdo */}
+      <div className="md:hidden h-12" aria-hidden="true" />
 
-      {/* Mobile bottom nav */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 flex justify-around items-center px-1 border-t border-line bg-surface/95 backdrop-blur py-3 z-20">
-        {LINKS.map((link) => {
-          const active = isActive(pathname, link.href);
-          return (
-            <Link
-              key={link.href}
-              href={link.href}
-              className={`whitespace-nowrap text-[11px] ${
-                active ? "text-ember" : "text-mute"
-              }`}
-            >
-              {link.label}
-            </Link>
-          );
-        })}
-        <Link
-          href="/personalizar"
-          aria-label="Personalizar"
-          className="text-mute text-base leading-none"
+      {/* Mobile: botão do menu, fixo no topo */}
+      <button
+        onClick={() => setOpen(true)}
+        aria-label="Abrir menu"
+        aria-expanded={open}
+        className="md:hidden fixed left-4 top-3 z-30 flex h-11 w-11 items-center justify-center rounded-lg border border-line bg-surface/95 text-bone backdrop-blur"
+      >
+        <MenuIcon />
+      </button>
+
+      {/* Mobile: menu lateral */}
+      <div
+        className={`md:hidden fixed inset-0 z-40 ${
+          open ? "" : "pointer-events-none"
+        }`}
+        aria-hidden={!open}
+      >
+        <div
+          onClick={() => setOpen(false)}
+          className={`absolute inset-0 bg-ink/70 transition-opacity duration-200 ${
+            open ? "opacity-100" : "opacity-0"
+          }`}
+        />
+
+        <aside
+          className={`absolute left-0 top-0 flex h-full w-72 max-w-[85%] flex-col justify-between overflow-y-auto border-r border-line bg-panel px-5 py-8 transition-transform duration-200 ${
+            open ? "translate-x-0" : "-translate-x-full"
+          }`}
         >
-          ⚙
-        </Link>
-        <ThemeToggle />
-      </nav>
+          <div>
+            <div className="mb-8 flex items-center justify-between px-3">
+              <span
+                className="tracked text-2xl text-bone"
+                style={{ fontFamily: "var(--font-fraunces), Georgia, serif" }}
+              >
+                ROUTINE
+              </span>
+              <button
+                onClick={() => setOpen(false)}
+                aria-label="Fechar menu"
+                className="text-mute hover:text-bone"
+              >
+                <CloseIcon />
+              </button>
+            </div>
+
+            <nav className="flex flex-col gap-1">
+              {LINKS.map((link) => {
+                const active = isActive(pathname, link.href);
+                return (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className={`${ITEM_BASE} ${
+                      active
+                        ? "bg-emberSoft text-ember"
+                        : "text-mute hover:text-bone"
+                    }`}
+                  >
+                    <NavIcon name={link.icon} />
+                    {link.label}
+                  </Link>
+                );
+              })}
+            </nav>
+          </div>
+
+          <div>
+            <p
+              className="mb-4 px-3 text-sm text-mute"
+              style={{ fontFamily: "var(--font-inter), system-ui, sans-serif" }}
+            >
+              sua rotina, no controle
+            </p>
+
+            <div className="flex flex-col gap-1 border-t border-line pt-4">
+              <div className="px-3">
+                <InstallButton />
+              </div>
+              <Link
+                href="/personalizar"
+                className={`${ITEM_BASE} ${
+                  isActive(pathname, "/personalizar")
+                    ? "bg-emberSoft text-ember"
+                    : "text-mute hover:text-bone"
+                }`}
+              >
+                <NavIcon name="settings" />
+                Personalizar
+              </Link>
+              <ThemeToggle
+                withLabel
+                className={`${ITEM_BASE} text-mute hover:text-bone`}
+              />
+              <button
+                onClick={signOut}
+                className={`${ITEM_BASE} text-mute hover:text-bone`}
+              >
+                <NavIcon name="logout" />
+                Sair
+              </button>
+            </div>
+          </div>
+        </aside>
+      </div>
     </>
   );
 }
