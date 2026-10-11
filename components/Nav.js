@@ -12,6 +12,7 @@ const LINKS = [
   { href: "/calendario", label: "Calendário" },
   { href: "/habits", label: "Hábitos" },
   { href: "/history", label: "Histórico" },
+  { href: "/financeiro", label: "Financeiro" },
 ];
 
 // Variáveis que o tema Personalizado aplica inline no <html>
@@ -188,14 +189,16 @@ export default function Nav() {
       </div>
 
       {/* Mobile bottom nav */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 flex justify-around items-center border-t border-line bg-surface/95 backdrop-blur py-3 z-20">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 flex justify-around items-center px-1 border-t border-line bg-surface/95 backdrop-blur py-3 z-20">
         {LINKS.map((link) => {
           const active = isActive(pathname, link.href);
           return (
             <Link
               key={link.href}
               href={link.href}
-              className={`text-xs ${active ? "text-ember" : "text-mute"}`}
+              className={`whitespace-nowrap text-[11px] ${
+                active ? "text-ember" : "text-mute"
+              }`}
             >
               {link.label}
             </Link>
