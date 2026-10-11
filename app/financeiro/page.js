@@ -422,8 +422,9 @@ export default function FinanceiroPage() {
     [metas, depositos]
   );
 
-  // Cada parcelamento com a parcela deste mês e o status
+  // Cada parcelamento com a parcela deste mês, o status e o que falta quitar
   // ativa = está rodando agora | futura = ainda não começou | quitada = acabou
+  // restantes conta a parcela deste mês (o app não controla se já foi paga)
   const parcelasView = useMemo(() => {
     const hoje = new Date();
     const mesAtual = hoje.getFullYear() * 12 + hoje.getMonth();
@@ -435,7 +436,19 @@ export default function FinanceiroPage() {
         let status = "ativa";
         if (numero < 1) status = "futura";
         else if (numero > p.total) status = "quitada";
-        return { ...p, numero, status, inicioLabel: `${pad(sm)}/${sy}` };
+
+        let restantes = 0;
+        if (status === "ativa") restantes = p.total - numero + 1;
+        else if (status === "futura") restantes = p.total;
+
+        return {
+          ...p,
+          numero,
+          status,
+          inicioLabel: `${pad(sm)}/${sy}`,
+          restantes,
+          totalRestante: restantes * p.valor,
+        };
       })
       .sort((a, b) => ordem[a.status] - ordem[b.status]);
   }, [parcelas]);
@@ -445,6 +458,12 @@ export default function FinanceiroPage() {
       parcelasView
         .filter((p) => p.status === "ativa")
         .reduce((s, p) => s + p.valor, 0),
+    [parcelasView]
+  );
+
+  // Quanto falta pagar, somando todos os parcelamentos
+  const totalAQuitar = useMemo(
+    () => parcelasView.reduce((s, p) => s + p.totalRestante, 0),
     [parcelasView]
   );
 
@@ -1296,16 +1315,22 @@ export default function FinanceiroPage() {
                             <p className="truncate text-sm text-bone">{p.nome}</p>
                             <p className="text-xs text-mute">
                               {p.status === "ativa" &&
-                                (p.total - p.numero === 0
+                                (p.restantes === 1
                                   ? `Parcela ${p.numero} de ${p.total} · última parcela`
-                                  : `Parcela ${p.numero} de ${p.total} · faltam ${
-                                      p.total - p.numero
-                                    }`)}
+                                  : `Parcela ${p.numero} de ${p.total} · restam ${p.restantes}`)}
                               {p.status === "futura" &&
                                 `Começa em ${p.inicioLabel} · ${p.total} parcelas`}
                               {p.status === "quitada" &&
                                 `Quitada · ${p.total} parcelas`}
                             </p>
+                            {p.status !== "quitada" && (
+                              <p className="text-xs text-mute">
+                                Falta quitar{" "}
+                                <span className="text-bone tabular-nums">
+                                  {brl(p.totalRestante)}
+                                </span>
+                              </p>
+                            )}
                           </div>
                           <div className="flex shrink-0 items-center gap-2">
                             <span className="text-sm text-bone tabular-nums">
@@ -1344,6 +1369,17 @@ export default function FinanceiroPage() {
                     )
                   )}
                 </ul>
+              )}
+
+              {totalAQuitar > 0 && (
+                <div className="mt-2 flex items-baseline justify-between gap-3 border-t border-line pt-3">
+                  <span className="text-xs text-mute">
+                    Total que falta quitar em todas as parcelas
+                  </span>
+                  <span className="text-sm font-medium text-bone tabular-nums">
+                    {brl(totalAQuitar)}
+                  </span>
+                </div>
               )}
 
               <div className="mt-4 flex flex-wrap gap-2">
