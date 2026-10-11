@@ -52,11 +52,21 @@ function limitesDoMes() {
   };
 }
 
+// Mês da 1ª parcela, voltando (atual - 1) meses a partir de hoje
+function inicioDaParcela(atual) {
+  const hoje = new Date();
+  const inicio = new Date(hoje.getFullYear(), hoje.getMonth() - (atual - 1), 1);
+  return `${inicio.getFullYear()}-${pad(inicio.getMonth() + 1)}-01`;
+}
+
 // "2026-10-11" -> "11/10"
 function dataCurta(iso) {
   const [, m, d] = String(iso).split("-");
   return `${d}/${m}`;
 }
+
+// número -> texto para campo de edição ("1500.5" -> "1500,5")
+const valorParaCampo = (n) => String(n).replace(".", ",");
 
 // banco -> tela
 const fromIncome = (r) => ({ id: r.id, nome: r.name, valor: Number(r.amount) });
@@ -72,6 +82,7 @@ const fromVar = (r) => {
   return {
     id: r.id,
     nome: desc || r.category,
+    descricao: desc,
     categoria: r.category,
     sub: desc ? `${r.category} · ${data}` : data,
     valor: Number(r.amount),
@@ -124,45 +135,84 @@ function Seletor({ className = "", children, ...props }) {
   );
 }
 
-// Se passar onTogglePago, aparece uma bolinha de "pago neste mês" em cada item
-function Lista({ itens, onRemover, vazio, pagos, onTogglePago }) {
+// Se passar onTogglePago, aparece uma bolinha de "pago neste mês" em cada item.
+// Se passar onEditar, aparece o botão "editar". O item cujo id for igual a
+// editId é desenhado pela função renderEdicao (campos de edição).
+function Lista({
+  itens,
+  onRemover,
+  onEditar,
+  editId,
+  renderEdicao,
+  vazio,
+  pagos,
+  onTogglePago,
+}) {
   if (itens.length === 0) {
     return <p className="text-sm text-mute py-2">{vazio}</p>;
   }
   return (
     <ul className="divide-y divide-line">
-      {itens.map((i) => (
-        <li key={i.id} className="flex items-center justify-between gap-3 py-3">
-          <div className="flex min-w-0 items-center gap-3">
-            {onTogglePago && (
-              <input
-                type="checkbox"
-                className="checkbox"
-                checked={(pagos || []).includes(i.id)}
-                onChange={() => onTogglePago(i.id)}
-                aria-label={`Marcar ${i.nome} como pago neste mês`}
-              />
-            )}
-            <div className="min-w-0">
-              <p className="truncate text-sm text-bone">{i.nome}</p>
-              {i.sub ? <p className="text-xs text-mute">{i.sub}</p> : null}
+      {itens.map((i) =>
+        editId && editId === i.id ? (
+          <li key={i.id} className="py-3">
+            {renderEdicao()}
+          </li>
+        ) : (
+          <li key={i.id} className="flex items-center justify-between gap-3 py-3">
+            <div className="flex min-w-0 items-center gap-3">
+              {onTogglePago && (
+                <input
+                  type="checkbox"
+                  className="checkbox"
+                  checked={(pagos || []).includes(i.id)}
+                  onChange={() => onTogglePago(i.id)}
+                  aria-label={`Marcar ${i.nome} como pago neste mês`}
+                />
+              )}
+              <div className="min-w-0">
+                <p className="truncate text-sm text-bone">{i.nome}</p>
+                {i.sub ? <p className="text-xs text-mute">{i.sub}</p> : null}
+              </div>
             </div>
-          </div>
-          <div className="flex shrink-0 items-center gap-3">
-            <span className="text-sm text-bone tabular-nums">{brl(i.valor)}</span>
-            <button
-              onClick={() => onRemover(i.id)}
-              className="px-1 py-1 text-xs text-mute hover:text-ember"
-              aria-label={`Remover ${i.nome}`}
-            >
-              remover
-            </button>
-          </div>
-        </li>
-      ))}
+            <div className="flex shrink-0 items-center gap-2">
+              <span className="text-sm text-bone tabular-nums">{brl(i.valor)}</span>
+              {onEditar && (
+                <button
+                  onClick={() => onEditar(i)}
+                  className="px-1 py-1 text-xs text-mute hover:text-ember"
+                  aria-label={`Editar ${i.nome}`}
+                >
+                  editar
+                </button>
+              )}
+              <button
+                onClick={() => onRemover(i.id)}
+                className="px-1 py-1 text-xs text-mute hover:text-ember"
+                aria-label={`Remover ${i.nome}`}
+              >
+                remover
+              </button>
+            </div>
+          </li>
+        )
+      )}
     </ul>
   );
 }
+
+const EDIT_VAZIO = {
+  tipo: "",
+  id: "",
+  nome: "",
+  valor: "",
+  dia: "",
+  total: "",
+  atual: "",
+  atualOrig: "",
+  desc: "",
+  categoria: CATEGORIAS[0],
+};
 
 export default function FinanceiroPage() {
   const { user, loading } = useAuth();
@@ -192,6 +242,7 @@ export default function FinanceiroPage() {
   const [mAlvo, setMAlvo] = useState("");
   const [guardarValor, setGuardarValor] = useState({});
   const [historicoAberto, setHistoricoAberto] = useState({}); // { metaId: true }
+  const [edit, setEdit] = useState(null); // item em edição (ou null)
 
   const loadData = useCallback(async () => {
     if (!user) return;
@@ -503,11 +554,6 @@ export default function FinanceiroPage() {
     // parcela em que você está agora (vazio = primeira)
     const atual = Math.min(total, Math.max(1, parseInt(pAtual, 10) || 1));
 
-    // descobre o mês da 1ª parcela voltando (atual - 1) meses a partir de hoje
-    const hoje = new Date();
-    const inicio = new Date(hoje.getFullYear(), hoje.getMonth() - (atual - 1), 1);
-    const inicioISO = `${inicio.getFullYear()}-${pad(inicio.getMonth() + 1)}-01`;
-
     const { data, error } = await supabase
       .from("installments")
       .insert({
@@ -515,7 +561,7 @@ export default function FinanceiroPage() {
         name: pNome.trim(),
         installment_amount: valor,
         total_installments: total,
-        start_month: inicioISO,
+        start_month: inicioDaParcela(atual),
       })
       .select()
       .single();
@@ -651,6 +697,326 @@ export default function FinanceiroPage() {
 
   function toggleHistorico(metaId) {
     setHistoricoAberto((h) => ({ ...h, [metaId]: !h[metaId] }));
+  }
+
+  // ---------- EDIÇÃO ----------
+
+  // Abre a edição de um item. tipo: renda | fixo | parcela | variavel | meta
+  function iniciarEdicao(tipo, item) {
+    const base = { ...EDIT_VAZIO, tipo, id: item.id, nome: item.nome };
+
+    if (tipo === "renda") {
+      setEdit({ ...base, valor: valorParaCampo(item.valor) });
+    } else if (tipo === "fixo") {
+      setEdit({
+        ...base,
+        valor: valorParaCampo(item.valor),
+        dia: item.dia ? String(item.dia) : "",
+      });
+    } else if (tipo === "variavel") {
+      setEdit({
+        ...base,
+        desc: item.descricao || "",
+        categoria: item.categoria,
+        valor: valorParaCampo(item.valor),
+      });
+    } else if (tipo === "parcela") {
+      const atual = item.status === "ativa" ? String(item.numero) : "";
+      setEdit({
+        ...base,
+        valor: valorParaCampo(item.valor),
+        total: String(item.total),
+        atual,
+        atualOrig: atual,
+      });
+    } else if (tipo === "meta") {
+      setEdit({ ...base, valor: valorParaCampo(item.alvo) });
+    }
+  }
+
+  function cancelarEdicao() {
+    setEdit(null);
+  }
+
+  function setEd(campo, valor) {
+    setEdit((e) => ({ ...e, [campo]: valor }));
+  }
+
+  async function salvarEdicao() {
+    if (!edit) return;
+    const { tipo, id } = edit;
+    const valor = toNumber(edit.valor);
+    const msgSalvar = "Não foi possível salvar a edição. Tente de novo.";
+
+    if (tipo === "renda") {
+      if (!edit.nome.trim() || valor <= 0) {
+        setErro("Preencha o nome e um valor maior que zero.");
+        return;
+      }
+      const { data, error } = await supabase
+        .from("income")
+        .update({ name: edit.nome.trim(), amount: valor })
+        .eq("id", id)
+        .select()
+        .single();
+      if (error) {
+        setErro(msgSalvar);
+        return;
+      }
+      setRendas((l) => l.map((i) => (i.id === id ? fromIncome(data) : i)));
+    } else if (tipo === "fixo") {
+      if (!edit.nome.trim() || valor <= 0) {
+        setErro("Preencha o nome e um valor maior que zero.");
+        return;
+      }
+      const dia = Math.min(31, Math.max(1, parseInt(edit.dia, 10) || 0)) || null;
+      const { data, error } = await supabase
+        .from("fixed_expenses")
+        .update({ name: edit.nome.trim(), amount: valor, due_day: dia })
+        .eq("id", id)
+        .select()
+        .single();
+      if (error) {
+        setErro(msgSalvar);
+        return;
+      }
+      setFixos((l) => l.map((i) => (i.id === id ? fromFixed(data) : i)));
+    } else if (tipo === "variavel") {
+      if (valor <= 0) {
+        setErro("Informe um valor maior que zero.");
+        return;
+      }
+      const { data, error } = await supabase
+        .from("variable_expenses")
+        .update({
+          description: edit.desc.trim() || null,
+          category: edit.categoria,
+          amount: valor,
+        })
+        .eq("id", id)
+        .select()
+        .single();
+      if (error) {
+        setErro(msgSalvar);
+        return;
+      }
+      setVariaveis((l) => l.map((i) => (i.id === id ? fromVar(data) : i)));
+    } else if (tipo === "parcela") {
+      if (!edit.nome.trim() || valor <= 0) {
+        setErro("Preencha o nome e um valor maior que zero.");
+        return;
+      }
+      const total = parseInt(edit.total, 10) || 0;
+      if (total < 1 || total > 120) {
+        setErro("Informe o total de parcelas (de 1 a 120).");
+        return;
+      }
+      const campos = {
+        name: edit.nome.trim(),
+        installment_amount: valor,
+        total_installments: total,
+      };
+      // Só muda o mês de início se o campo "Atual" foi alterado
+      const atualTxt = edit.atual.trim();
+      if (atualTxt && atualTxt !== edit.atualOrig) {
+        const atual = Math.min(total, Math.max(1, parseInt(atualTxt, 10) || 1));
+        campos.start_month = inicioDaParcela(atual);
+      }
+      const { data, error } = await supabase
+        .from("installments")
+        .update(campos)
+        .eq("id", id)
+        .select()
+        .single();
+      if (error) {
+        setErro(msgSalvar);
+        return;
+      }
+      setParcelas((l) => l.map((i) => (i.id === id ? fromInstallment(data) : i)));
+    } else if (tipo === "meta") {
+      if (!edit.nome.trim() || valor <= 0) {
+        setErro("Preencha o nome e um valor alvo maior que zero.");
+        return;
+      }
+      const { data, error } = await supabase
+        .from("goals")
+        .update({ name: edit.nome.trim(), target: valor })
+        .eq("id", id)
+        .select()
+        .single();
+      if (error) {
+        setErro(msgSalvar);
+        return;
+      }
+      setMetas((l) => l.map((i) => (i.id === id ? fromGoal(data) : i)));
+    }
+
+    setErro("");
+    setEdit(null);
+  }
+
+  // Enter salva, Esc cancela
+  function teclasEdicao(e) {
+    if (e.key === "Enter") salvarEdicao();
+    if (e.key === "Escape") cancelarEdicao();
+  }
+
+  // id do item em edição, só se for do tipo pedido
+  function idEditando(tipo) {
+    return edit && edit.tipo === tipo ? edit.id : null;
+  }
+
+  // Campos de edição (mudam conforme o tipo do item aberto)
+  function formEdicao() {
+    if (!edit) return null;
+
+    const botoes = (
+      <div className="flex basis-full gap-2">
+        <button
+          onClick={salvarEdicao}
+          className="rounded-lg bg-ember px-5 py-2.5 text-sm font-medium text-ink"
+        >
+          Salvar
+        </button>
+        <button
+          onClick={cancelarEdicao}
+          className="rounded-lg border border-line px-5 py-2.5 text-sm text-mute hover:text-bone"
+        >
+          Cancelar
+        </button>
+      </div>
+    );
+
+    if (edit.tipo === "variavel") {
+      return (
+        <div className="flex flex-wrap gap-2">
+          <Campo
+            className="basis-full"
+            placeholder="Descrição (opcional)"
+            value={edit.desc}
+            onChange={(e) => setEd("desc", e.target.value)}
+            onKeyDown={teclasEdicao}
+          />
+          <Seletor
+            className="basis-full"
+            value={edit.categoria}
+            onChange={(e) => setEd("categoria", e.target.value)}
+            aria-label="Categoria"
+          >
+            {CATEGORIAS.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </Seletor>
+          <Campo
+            className="min-w-0 flex-1"
+            placeholder="Valor"
+            inputMode="decimal"
+            value={edit.valor}
+            onChange={(e) => setEd("valor", e.target.value)}
+            onKeyDown={teclasEdicao}
+          />
+          {botoes}
+        </div>
+      );
+    }
+
+    if (edit.tipo === "fixo") {
+      return (
+        <div className="flex flex-wrap gap-2">
+          <Campo
+            className="basis-full"
+            placeholder="Nome"
+            value={edit.nome}
+            onChange={(e) => setEd("nome", e.target.value)}
+            onKeyDown={teclasEdicao}
+          />
+          <Campo
+            className="min-w-0 flex-1"
+            placeholder="Valor"
+            inputMode="decimal"
+            value={edit.valor}
+            onChange={(e) => setEd("valor", e.target.value)}
+            onKeyDown={teclasEdicao}
+          />
+          <Campo
+            className="w-20"
+            placeholder="Dia"
+            inputMode="numeric"
+            value={edit.dia}
+            onChange={(e) => setEd("dia", e.target.value)}
+            onKeyDown={teclasEdicao}
+          />
+          {botoes}
+        </div>
+      );
+    }
+
+    if (edit.tipo === "parcela") {
+      return (
+        <div className="flex flex-wrap gap-2">
+          <Campo
+            className="basis-full"
+            placeholder="Nome"
+            value={edit.nome}
+            onChange={(e) => setEd("nome", e.target.value)}
+            onKeyDown={teclasEdicao}
+          />
+          <Campo
+            className="min-w-0 flex-1"
+            placeholder="Valor da parcela"
+            inputMode="decimal"
+            value={edit.valor}
+            onChange={(e) => setEd("valor", e.target.value)}
+            onKeyDown={teclasEdicao}
+          />
+          <Campo
+            className="w-20"
+            placeholder="Total"
+            inputMode="numeric"
+            value={edit.total}
+            onChange={(e) => setEd("total", e.target.value)}
+            onKeyDown={teclasEdicao}
+          />
+          <Campo
+            className="w-20"
+            placeholder="Atual"
+            inputMode="numeric"
+            value={edit.atual}
+            onChange={(e) => setEd("atual", e.target.value)}
+            onKeyDown={teclasEdicao}
+          />
+          <p className="basis-full text-xs text-mute">
+            Total = quantas parcelas tem a compra. Atual = qual parcela você
+            paga neste mês (não mexa se não quiser mudar).
+          </p>
+          {botoes}
+        </div>
+      );
+    }
+
+    // renda e meta: nome + valor
+    return (
+      <div className="flex flex-wrap gap-2">
+        <Campo
+          className="basis-full"
+          placeholder="Nome"
+          value={edit.nome}
+          onChange={(e) => setEd("nome", e.target.value)}
+          onKeyDown={teclasEdicao}
+        />
+        <Campo
+          className="min-w-0 flex-1"
+          placeholder={edit.tipo === "meta" ? "Valor alvo" : "Valor"}
+          inputMode="decimal"
+          value={edit.valor}
+          onChange={(e) => setEd("valor", e.target.value)}
+          onKeyDown={teclasEdicao}
+        />
+        {botoes}
+      </div>
+    );
   }
 
   if (loading || !user) return null;
@@ -823,6 +1189,9 @@ export default function FinanceiroPage() {
                 itens={rendas}
                 vazio="Nenhuma renda ainda. Comece pelo salário."
                 onRemover={removeRenda}
+                onEditar={(i) => iniciarEdicao("renda", i)}
+                editId={idEditando("renda")}
+                renderEdicao={formEdicao}
               />
               <div className="mt-4 flex flex-wrap gap-2">
                 <Campo
@@ -856,6 +1225,9 @@ export default function FinanceiroPage() {
                 itens={fixosOrdenados}
                 vazio="Nenhum gasto fixo ainda. Aluguel, internet, assinaturas..."
                 onRemover={removeFixo}
+                onEditar={(i) => iniciarEdicao("fixo", i)}
+                editId={idEditando("fixo")}
+                renderEdicao={formEdicao}
                 pagos={pagos}
                 onTogglePago={togglePago}
               />
@@ -907,57 +1279,70 @@ export default function FinanceiroPage() {
                 </p>
               ) : (
                 <ul className="divide-y divide-line">
-                  {parcelasView.map((p) => (
-                    <li
-                      key={p.id}
-                      className={
-                        "py-3 " + (p.status === "ativa" ? "" : "opacity-60")
-                      }
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm text-bone">{p.nome}</p>
-                          <p className="text-xs text-mute">
-                            {p.status === "ativa" &&
-                              (p.total - p.numero === 0
-                                ? `Parcela ${p.numero} de ${p.total} · última parcela`
-                                : `Parcela ${p.numero} de ${p.total} · faltam ${
-                                    p.total - p.numero
-                                  }`)}
-                            {p.status === "futura" &&
-                              `Começa em ${p.inicioLabel} · ${p.total} parcelas`}
-                            {p.status === "quitada" &&
-                              `Quitada · ${p.total} parcelas`}
-                          </p>
+                  {parcelasView.map((p) =>
+                    idEditando("parcela") === p.id ? (
+                      <li key={p.id} className="py-3">
+                        {formEdicao()}
+                      </li>
+                    ) : (
+                      <li
+                        key={p.id}
+                        className={
+                          "py-3 " + (p.status === "ativa" ? "" : "opacity-60")
+                        }
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm text-bone">{p.nome}</p>
+                            <p className="text-xs text-mute">
+                              {p.status === "ativa" &&
+                                (p.total - p.numero === 0
+                                  ? `Parcela ${p.numero} de ${p.total} · última parcela`
+                                  : `Parcela ${p.numero} de ${p.total} · faltam ${
+                                      p.total - p.numero
+                                    }`)}
+                              {p.status === "futura" &&
+                                `Começa em ${p.inicioLabel} · ${p.total} parcelas`}
+                              {p.status === "quitada" &&
+                                `Quitada · ${p.total} parcelas`}
+                            </p>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2">
+                            <span className="text-sm text-bone tabular-nums">
+                              {brl(p.valor)}
+                            </span>
+                            <button
+                              onClick={() => iniciarEdicao("parcela", p)}
+                              className="px-1 py-1 text-xs text-mute hover:text-ember"
+                              aria-label={`Editar ${p.nome}`}
+                            >
+                              editar
+                            </button>
+                            <button
+                              onClick={() => removeParcela(p.id)}
+                              className="px-1 py-1 text-xs text-mute hover:text-ember"
+                              aria-label={`Remover ${p.nome}`}
+                            >
+                              remover
+                            </button>
+                          </div>
                         </div>
-                        <div className="flex shrink-0 items-center gap-3">
-                          <span className="text-sm text-bone tabular-nums">
-                            {brl(p.valor)}
-                          </span>
-                          <button
-                            onClick={() => removeParcela(p.id)}
-                            className="px-1 py-1 text-xs text-mute hover:text-ember"
-                            aria-label={`Remover ${p.nome}`}
-                          >
-                            remover
-                          </button>
-                        </div>
-                      </div>
-                      {p.status === "ativa" && (
-                        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface">
-                          <div
-                            className="h-full rounded-full bg-ember transition-all"
-                            style={{
-                              width: `${Math.min(
-                                100,
-                                (p.numero / p.total) * 100
-                              )}%`,
-                            }}
-                          />
-                        </div>
-                      )}
-                    </li>
-                  ))}
+                        {p.status === "ativa" && (
+                          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface">
+                            <div
+                              className="h-full rounded-full bg-ember transition-all"
+                              style={{
+                                width: `${Math.min(
+                                  100,
+                                  (p.numero / p.total) * 100
+                                )}%`,
+                              }}
+                            />
+                          </div>
+                        )}
+                      </li>
+                    )
+                  )}
                 </ul>
               )}
 
@@ -1011,6 +1396,9 @@ export default function FinanceiroPage() {
                 itens={variaveis}
                 vazio="Nenhum gasto variável neste mês. Mercado, lazer, transporte..."
                 onRemover={removeVariavel}
+                onEditar={(i) => iniciarEdicao("variavel", i)}
+                editId={idEditando("variavel")}
+                renderEdicao={formEdicao}
               />
               <div className="mt-4 flex flex-wrap gap-2">
                 <Campo
@@ -1062,18 +1450,31 @@ export default function FinanceiroPage() {
                 <ul className="divide-y divide-line">
                   {metasView.map((m) => (
                     <li key={m.id} className="py-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="min-w-0 truncate text-sm text-bone">
-                          {m.nome}
-                        </p>
-                        <button
-                          onClick={() => removeMeta(m.id)}
-                          className="shrink-0 px-1 py-1 text-xs text-mute hover:text-ember"
-                          aria-label={`Remover meta ${m.nome}`}
-                        >
-                          remover
-                        </button>
-                      </div>
+                      {idEditando("meta") === m.id ? (
+                        formEdicao()
+                      ) : (
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="min-w-0 truncate text-sm text-bone">
+                            {m.nome}
+                          </p>
+                          <div className="flex shrink-0 items-center gap-2">
+                            <button
+                              onClick={() => iniciarEdicao("meta", m)}
+                              className="px-1 py-1 text-xs text-mute hover:text-ember"
+                              aria-label={`Editar meta ${m.nome}`}
+                            >
+                              editar
+                            </button>
+                            <button
+                              onClick={() => removeMeta(m.id)}
+                              className="px-1 py-1 text-xs text-mute hover:text-ember"
+                              aria-label={`Remover meta ${m.nome}`}
+                            >
+                              remover
+                            </button>
+                          </div>
+                        </div>
+                      )}
 
                       <div className="mt-2 flex items-baseline justify-between gap-3">
                         <span className="text-sm text-bone tabular-nums">
