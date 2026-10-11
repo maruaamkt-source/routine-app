@@ -325,9 +325,9 @@ export default function Nav() {
         <MenuIcon />
       </button>
 
-      {/* Mobile: menu lateral */}
+      {/* Mobile: menu lateral (z alto pra ficar acima da marca d'água da página) */}
       <div
-        className={`md:hidden fixed inset-0 z-40 ${
+        className={`md:hidden fixed inset-0 z-[100] ${
           open ? "" : "pointer-events-none"
         }`}
         aria-hidden={!open}
@@ -383,12 +383,21 @@ export default function Nav() {
           </div>
 
           <div>
-            <p
-              className="mb-4 px-3 text-sm text-mute"
-              style={{ fontFamily: "var(--font-inter), system-ui, sans-serif" }}
-            >
-              sua rotina, no controle
-            </p>
+            {/* Marca: ROUTINE em cima, frase embaixo */}
+            <div className="mb-4 px-3">
+              <p
+                className="tracked text-lg text-mute"
+                style={{ fontFamily: "var(--font-fraunces), Georgia, serif" }}
+              >
+                ROUTINE
+              </p>
+              <p
+                className="text-sm text-mute"
+                style={{ fontFamily: "var(--font-inter), system-ui, sans-serif" }}
+              >
+                sua rotina, no controle
+              </p>
+            </div>
 
             <div className="flex flex-col gap-1 border-t border-line pt-4">
               <div className="px-3">
