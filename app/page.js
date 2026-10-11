@@ -28,12 +28,34 @@ function greeting() {
   return "Boa noite";
 }
 
+const brl = (n) =>
+  Number(n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+// Quantos dias faltam pro próximo vencimento (0 = hoje).
+// Se o dia não existe no mês (ex.: dia 31 em abril), vale o último dia do mês.
+function diasAteVencer(diaVenc, agora) {
+  const inicioHoje = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate());
+  const y = agora.getFullYear();
+  const m = agora.getMonth();
+
+  const ultimoDoMes = new Date(y, m + 1, 0).getDate();
+  let alvo = new Date(y, m, Math.min(diaVenc, ultimoDoMes));
+
+  if (alvo < inicioHoje) {
+    const ultimoProximo = new Date(y, m + 2, 0).getDate();
+    alvo = new Date(y, m + 1, Math.min(diaVenc, ultimoProximo));
+  }
+
+  return Math.round((alvo - inicioHoje) / 86400000);
+}
+
 export default function TodayPage() {
   const { user, loading } = useAuth();
   const [tasks, setTasks] = useState([]);
   const [weekTasks, setWeekTasks] = useState([]);
   const [habits, setHabits] = useState([]);
   const [logsByHabit, setLogsByHabit] = useState({});
+  const [fixos, setFixos] = useState([]);
   const [fetching, setFetching] = useState(true);
 
   const today = todayISO();
@@ -48,10 +70,25 @@ export default function TodayPage() {
   const headerQuote = useMemo(() => getQuoteForDate(new Date()), []);
   const panelQuote = useMemo(() => getRandomQuote(), []);
 
+  // Gastos fixos que vencem hoje ou nos próximos 3 dias
+  const vencimentos = useMemo(() => {
+    const agora = new Date();
+    return fixos
+      .filter((f) => f.due_day)
+      .map((f) => ({
+        id: f.id,
+        nome: f.name,
+        valor: Number(f.amount),
+        dias: diasAteVencer(f.due_day, agora),
+      }))
+      .filter((f) => f.dias <= 3)
+      .sort((a, b) => a.dias - b.dias);
+  }, [fixos, today]);
+
   const loadData = useCallback(async () => {
     if (!user) return;
 
-    const [todayRes, weekRes, habitsRes, logsRes] = await Promise.all([
+    const [todayRes, weekRes, habitsRes, logsRes, fixedRes] = await Promise.all([
       supabase
         .from("tasks")
         .select("*")
@@ -70,11 +107,17 @@ export default function TodayPage() {
         .eq("user_id", user.id)
         .order("created_at", { ascending: true }),
       supabase.from("habit_logs").select("*").eq("user_id", user.id),
+      supabase
+        .from("fixed_expenses")
+        .select("id, name, amount, due_day")
+        .eq("user_id", user.id)
+        .not("due_day", "is", null),
     ]);
 
     if (!todayRes.error) setTasks(todayRes.data ?? []);
     if (!weekRes.error) setWeekTasks(weekRes.data ?? []);
     if (!habitsRes.error) setHabits(habitsRes.data ?? []);
+    if (!fixedRes.error) setFixos(fixedRes.data ?? []);
 
     const grouped = {};
     (logsRes.data ?? []).forEach((log) => {
@@ -263,6 +306,41 @@ export default function TodayPage() {
         <div className="mb-6">
           <TaskForm defaultDate={today} onCreate={handleCreate} />
         </div>
+
+        {vencimentos.length > 0 && (
+          <div className="mb-6 rounded-lg border-l-2 border-ember bg-panel p-4">
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="text-xs tracking-wide text-mute uppercase">
+                Vencimentos próximos
+              </h2>
+              <Link href="/financeiro" className="text-xs text-ember">
+                Ver financeiro →
+              </Link>
+            </div>
+            <ul className="flex flex-col gap-1.5">
+              {vencimentos.map((v) => (
+                <li
+                  key={v.id}
+                  className="flex items-center justify-between gap-3 text-sm"
+                >
+                  <span className="min-w-0 truncate text-bone">
+                    {v.nome}{" "}
+                    <span className="text-mute">
+                      {v.dias === 0
+                        ? "vence hoje"
+                        : v.dias === 1
+                        ? "vence amanhã"
+                        : `vence em ${v.dias} dias`}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-bone tabular-nums">
+                    {brl(v.valor)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Painel: hoje */}
