@@ -102,6 +102,11 @@ const fromInstallment = (r) => ({
   total: Number(r.total_installments),
   inicio: r.start_month, // "YYYY-MM-01"
 });
+const fromLimit = (r) => ({
+  id: r.id,
+  categoria: r.category,
+  valor: Number(r.amount),
+});
 
 function diasRestantesNoMes() {
   const hoje = new Date();
@@ -222,6 +227,7 @@ export default function FinanceiroPage() {
   const [parcelas, setParcelas] = useState([]);
   const [pagosParc, setPagosParc] = useState([]); // ids das parcelas pagas neste mês
   const [variaveis, setVariaveis] = useState([]);
+  const [limites, setLimites] = useState([]); // limites por categoria
   const [metas, setMetas] = useState([]);
   const [depositos, setDepositos] = useState([]);
   const [carregado, setCarregado] = useState(false);
@@ -239,6 +245,8 @@ export default function FinanceiroPage() {
   const [vDesc, setVDesc] = useState("");
   const [vCat, setVCat] = useState(CATEGORIAS[0]);
   const [vValor, setVValor] = useState("");
+  const [lCat, setLCat] = useState(CATEGORIAS[0]);
+  const [lValor, setLValor] = useState("");
   const [mNome, setMNome] = useState("");
   const [mAlvo, setMAlvo] = useState("");
   const [guardarValor, setGuardarValor] = useState({});
@@ -250,7 +258,7 @@ export default function FinanceiroPage() {
 
     const { ini, fim } = limitesDoMes();
 
-    const [inc, fix, vars, gls, dps, ins, pay, ipay] = await Promise.all([
+    const [inc, fix, vars, gls, dps, ins, pay, ipay, lim] = await Promise.all([
       supabase
         .from("income")
         .select("*")
@@ -294,6 +302,11 @@ export default function FinanceiroPage() {
         .select("installment_id")
         .eq("user_id", user.id)
         .eq("ref_month", mesAtualISO()),
+      supabase
+        .from("category_limits")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: true }),
     ]);
 
     if (
@@ -304,7 +317,8 @@ export default function FinanceiroPage() {
       dps.error ||
       ins.error ||
       pay.error ||
-      ipay.error
+      ipay.error ||
+      lim.error
     ) {
       setErro(
         "Não foi possível carregar seus dados. Confira se as tabelas foram criadas."
@@ -321,6 +335,7 @@ export default function FinanceiroPage() {
     const parcelasDb = (ins.data ?? []).map(fromInstallment);
     const pagosDb = (pay.data ?? []).map((r) => r.fixed_expense_id);
     const pagosParcDb = (ipay.data ?? []).map((r) => r.installment_id);
+    const limitesDb = (lim.data ?? []).map(fromLimit);
 
     // Migração única: se o banco está vazio e existe algo salvo no aparelho
     // pela primeira versão, envia para o Supabase e limpa o local.
@@ -378,6 +393,7 @@ export default function FinanceiroPage() {
     setParcelas(parcelasDb);
     setPagos(pagosDb);
     setPagosParc(pagosParcDb);
+    setLimites(limitesDb);
     setErro("");
     setCarregado(true);
   }, [user]);
@@ -393,21 +409,56 @@ export default function FinanceiroPage() {
     [variaveis]
   );
 
-  // Variáveis do mês somados por categoria (do maior pro menor)
-  const resumoCategorias = useMemo(() => {
-    const mapa = {};
+  // Variáveis do mês por categoria, junto com o limite (se existir).
+  // Aparecem as categorias com gasto e as que têm limite definido.
+  const categoriasView = useMemo(() => {
+    const gasto = {};
     variaveis.forEach((v) => {
-      mapa[v.categoria] = (mapa[v.categoria] || 0) + v.valor;
+      gasto[v.categoria] = (gasto[v.categoria] || 0) + v.valor;
     });
-    const total = Object.values(mapa).reduce((s, n) => s + n, 0);
-    return Object.entries(mapa)
-      .map(([categoria, valor]) => ({
-        categoria,
-        total: valor,
-        pct: total > 0 ? (valor / total) * 100 : 0,
-      }))
+    const limMap = {};
+    limites.forEach((l) => {
+      limMap[l.categoria] = l;
+    });
+    const nomes = new Set([...Object.keys(gasto), ...Object.keys(limMap)]);
+    const totalGeral = Object.values(gasto).reduce((s, n) => s + n, 0);
+
+    return [...nomes]
+      .map((categoria) => {
+        const total = gasto[categoria] || 0;
+        const lim = limMap[categoria];
+        const limite = lim ? lim.valor : null;
+        return {
+          categoria,
+          total,
+          pct: totalGeral > 0 ? (total / totalGeral) * 100 : 0,
+          limite,
+          limiteId: lim ? lim.id : null,
+          pctLimite: limite ? (total / limite) * 100 : 0,
+        };
+      })
       .sort((a, b) => b.total - a.total);
-  }, [variaveis]);
+  }, [variaveis, limites]);
+
+  // Avisos: categoria que passou do limite ou chegou a 80% dele
+  const alertasLimite = useMemo(
+    () =>
+      categoriasView
+        .filter((c) => c.limite)
+        .map((c) => {
+          if (c.total > c.limite) {
+            return `Você passou do limite de ${c.categoria} em ${brl(
+              c.total - c.limite
+            )}.`;
+          }
+          if (c.pctLimite >= 80) {
+            return `${c.categoria} já usou ${c.pctLimite.toFixed(0)}% do limite.`;
+          }
+          return null;
+        })
+        .filter(Boolean),
+    [categoriasView]
+  );
 
   // Só o que foi guardado NESTE mês sai da sobra
   const guardadoNoMes = useMemo(() => {
@@ -683,6 +734,40 @@ export default function FinanceiroPage() {
       return;
     }
     setVariaveis((l) => l.filter((i) => i.id !== id));
+  }
+
+  // Define (ou troca) o limite de uma categoria
+  async function salvarLimite() {
+    const valor = toNumber(lValor);
+    if (valor <= 0) {
+      setErro("Informe um limite maior que zero.");
+      return;
+    }
+    const { data, error } = await supabase
+      .from("category_limits")
+      .upsert(
+        { user_id: user.id, category: lCat, amount: valor },
+        { onConflict: "user_id,category" }
+      )
+      .select()
+      .single();
+    if (error) {
+      setErro("Não foi possível salvar o limite. Tente de novo.");
+      return;
+    }
+    setErro("");
+    setLimites((l) => [...l.filter((x) => x.categoria !== lCat), fromLimit(data)]);
+    setLValor("");
+  }
+
+  async function removeLimite(id) {
+    const { error } = await supabase.from("category_limits").delete().eq("id", id);
+    if (error) {
+      setErro("Não foi possível remover o limite. Tente de novo.");
+      return;
+    }
+    setErro("");
+    setLimites((l) => l.filter((x) => x.id !== id));
   }
 
   async function addMeta() {
@@ -1210,13 +1295,34 @@ export default function FinanceiroPage() {
               </div>
             )}
 
-            {resumoCategorias.length > 0 && (
-              <div className="rounded-lg border border-line bg-panel p-5">
-                <h2 className="text-xs tracking-wide text-mute uppercase mb-3">
-                  Variáveis por categoria
+            {alertasLimite.length > 0 && (
+              <div className="rounded-lg border-l-2 border-ember bg-panel p-4">
+                <h2 className="text-xs tracking-wide text-mute uppercase mb-2">
+                  Limites por categoria
                 </h2>
-                <ul className="flex flex-col gap-3">
-                  {resumoCategorias.map((c) => (
+                <ul className="flex flex-col gap-1">
+                  {alertasLimite.map((a) => (
+                    <li key={a} className="text-sm text-bone/90 leading-snug">
+                      {a}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className="rounded-lg border border-line bg-panel p-5">
+              <h2 className="text-xs tracking-wide text-mute uppercase mb-3">
+                Variáveis por categoria
+              </h2>
+
+              {categoriasView.length === 0 ? (
+                <p className="text-sm text-mute py-1">
+                  Nenhum gasto variável neste mês. Defina um limite abaixo se
+                  quiser.
+                </p>
+              ) : (
+                <ul className="flex flex-col gap-4">
+                  {categoriasView.map((c) => (
                     <li key={c.categoria}>
                       <div className="flex items-baseline justify-between gap-3">
                         <span className="min-w-0 truncate text-sm text-bone">
@@ -1224,22 +1330,84 @@ export default function FinanceiroPage() {
                         </span>
                         <span className="shrink-0 text-sm text-bone tabular-nums">
                           {brl(c.total)}{" "}
-                          <span className="text-xs text-mute">
-                            {c.pct.toFixed(0)}%
-                          </span>
+                          {c.limite ? (
+                            <span className="text-xs text-mute">
+                              de {brl(c.limite)}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-mute">
+                              {c.pct.toFixed(0)}%
+                            </span>
+                          )}
                         </span>
                       </div>
                       <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface">
                         <div
                           className="h-full rounded-full bg-ember transition-all"
-                          style={{ width: `${c.pct}%` }}
+                          style={{
+                            width: `${
+                              c.limite ? Math.min(100, c.pctLimite) : c.pct
+                            }%`,
+                          }}
                         />
                       </div>
+                      {c.limite && (
+                        <div className="mt-1 flex items-center justify-between gap-3">
+                          <p className="text-xs text-mute">
+                            {c.total > c.limite
+                              ? `Passou ${brl(c.total - c.limite)} do limite`
+                              : `${c.pctLimite.toFixed(0)}% do limite · restam ${brl(
+                                  c.limite - c.total
+                                )}`}
+                          </p>
+                          <button
+                            onClick={() => removeLimite(c.limiteId)}
+                            className="shrink-0 px-1 py-1 text-xs text-mute hover:text-ember"
+                            aria-label={`Remover limite de ${c.categoria}`}
+                          >
+                            remover limite
+                          </button>
+                        </div>
+                      )}
                     </li>
                   ))}
                 </ul>
+              )}
+
+              <div className="mt-4 border-t border-line pt-4">
+                <p className="mb-2 text-xs text-mute">
+                  Definir limite mensal (se já existir, o valor é trocado)
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Seletor
+                    className="basis-full"
+                    value={lCat}
+                    onChange={(e) => setLCat(e.target.value)}
+                    aria-label="Categoria do limite"
+                  >
+                    {CATEGORIAS.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </Seletor>
+                  <Campo
+                    className="min-w-0 flex-1"
+                    placeholder="Limite"
+                    inputMode="decimal"
+                    value={lValor}
+                    onChange={(e) => setLValor(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && salvarLimite()}
+                  />
+                  <button
+                    onClick={salvarLimite}
+                    className="rounded-lg bg-ember px-5 py-2.5 text-sm font-medium text-ink"
+                  >
+                    Definir
+                  </button>
+                </div>
               </div>
-            )}
+            </div>
           </div>
 
           {/* Entradas, fixos, parcelas, variáveis e metas */}
