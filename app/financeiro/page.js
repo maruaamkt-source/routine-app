@@ -70,6 +70,13 @@ const fromVar = (r) => {
     valor: Number(r.amount),
   };
 };
+const fromGoal = (r) => ({ id: r.id, nome: r.name, alvo: Number(r.target) });
+const fromDeposit = (r) => ({
+  id: r.id,
+  metaId: r.goal_id,
+  valor: Number(r.amount),
+  data: r.deposited_at,
+});
 
 function diasRestantesNoMes() {
   const hoje = new Date();
@@ -136,6 +143,8 @@ export default function FinanceiroPage() {
   const [rendas, setRendas] = useState([]);
   const [fixos, setFixos] = useState([]);
   const [variaveis, setVariaveis] = useState([]);
+  const [metas, setMetas] = useState([]);
+  const [depositos, setDepositos] = useState([]);
   const [carregado, setCarregado] = useState(false);
   const [erro, setErro] = useState("");
 
@@ -147,13 +156,16 @@ export default function FinanceiroPage() {
   const [vDesc, setVDesc] = useState("");
   const [vCat, setVCat] = useState(CATEGORIAS[0]);
   const [vValor, setVValor] = useState("");
+  const [mNome, setMNome] = useState("");
+  const [mAlvo, setMAlvo] = useState("");
+  const [guardarValor, setGuardarValor] = useState({});
 
   const loadData = useCallback(async () => {
     if (!user) return;
 
     const { ini, fim } = limitesDoMes();
 
-    const [inc, fix, vars] = await Promise.all([
+    const [inc, fix, vars, gls, dps] = await Promise.all([
       supabase
         .from("income")
         .select("*")
@@ -172,9 +184,19 @@ export default function FinanceiroPage() {
         .lte("spent_at", fim)
         .order("spent_at", { ascending: false })
         .order("created_at", { ascending: false }),
+      supabase
+        .from("goals")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: true }),
+      supabase
+        .from("goal_deposits")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: true }),
     ]);
 
-    if (inc.error || fix.error || vars.error) {
+    if (inc.error || fix.error || vars.error || gls.error || dps.error) {
       setErro(
         "Não foi possível carregar seus dados. Confira se as tabelas foram criadas."
       );
@@ -185,6 +207,8 @@ export default function FinanceiroPage() {
     let rendasDb = (inc.data ?? []).map(fromIncome);
     let fixosDb = (fix.data ?? []).map(fromFixed);
     const varsDb = (vars.data ?? []).map(fromVar);
+    const metasDb = (gls.data ?? []).map(fromGoal);
+    const depositosDb = (dps.data ?? []).map(fromDeposit);
 
     // Migração única: se o banco está vazio e existe algo salvo no aparelho
     // pela primeira versão, envia para o Supabase e limpa o local.
@@ -237,6 +261,8 @@ export default function FinanceiroPage() {
     setRendas(rendasDb);
     setFixos(fixosDb);
     setVariaveis(varsDb);
+    setMetas(metasDb);
+    setDepositos(depositosDb);
     setErro("");
     setCarregado(true);
   }, [user]);
@@ -250,6 +276,27 @@ export default function FinanceiroPage() {
   const totalVariaveis = useMemo(
     () => variaveis.reduce((s, i) => s + i.valor, 0),
     [variaveis]
+  );
+
+  // Só o que foi guardado NESTE mês sai da sobra
+  const guardadoNoMes = useMemo(() => {
+    const { ini, fim } = limitesDoMes();
+    return depositos
+      .filter((d) => d.data >= ini && d.data <= fim)
+      .reduce((s, d) => s + d.valor, 0);
+  }, [depositos]);
+
+  // Cada meta com o total guardado (todos os meses) e o progresso
+  const metasView = useMemo(
+    () =>
+      metas.map((m) => {
+        const guardado = depositos
+          .filter((d) => d.metaId === m.id)
+          .reduce((s, d) => s + d.valor, 0);
+        const pct = m.alvo > 0 ? Math.min(100, (guardado / m.alvo) * 100) : 0;
+        return { ...m, guardado, pct };
+      }),
+    [metas, depositos]
   );
 
   async function addRenda() {
@@ -349,9 +396,64 @@ export default function FinanceiroPage() {
     setVariaveis((l) => l.filter((i) => i.id !== id));
   }
 
+  async function addMeta() {
+    const alvo = toNumber(mAlvo);
+    if (!mNome.trim() || alvo <= 0) return;
+    const { data, error } = await supabase
+      .from("goals")
+      .insert({ user_id: user.id, name: mNome.trim(), target: alvo })
+      .select()
+      .single();
+    if (error) {
+      setErro("Não foi possível criar a meta. Tente de novo.");
+      return;
+    }
+    setErro("");
+    setMetas((l) => [...l, fromGoal(data)]);
+    setMNome("");
+    setMAlvo("");
+  }
+
+  async function removeMeta(id) {
+    const ok = window.confirm(
+      "Remover essa meta e tudo que foi guardado nela? O valor deste mês volta para a sobra livre."
+    );
+    if (!ok) return;
+    const { error } = await supabase.from("goals").delete().eq("id", id);
+    if (error) {
+      setErro("Não foi possível remover a meta. Tente de novo.");
+      return;
+    }
+    setErro("");
+    setMetas((l) => l.filter((m) => m.id !== id));
+    setDepositos((l) => l.filter((d) => d.metaId !== id));
+  }
+
+  async function guardar(metaId) {
+    const valor = toNumber(guardarValor[metaId] || "");
+    if (valor <= 0) return;
+    const { data, error } = await supabase
+      .from("goal_deposits")
+      .insert({
+        user_id: user.id,
+        goal_id: metaId,
+        amount: valor,
+        deposited_at: hojeISO(),
+      })
+      .select()
+      .single();
+    if (error) {
+      setErro("Não foi possível guardar o valor. Tente de novo.");
+      return;
+    }
+    setErro("");
+    setDepositos((l) => [...l, fromDeposit(data)]);
+    setGuardarValor((g) => ({ ...g, [metaId]: "" }));
+  }
+
   if (loading || !user) return null;
 
-  const comprometido = totalFixos + totalVariaveis;
+  const comprometido = totalFixos + totalVariaveis + guardadoNoMes;
   const sobra = totalRenda - comprometido;
   const pctComprometido =
     totalRenda > 0 ? Math.min(100, (comprometido / totalRenda) * 100) : 0;
@@ -414,7 +516,7 @@ export default function FinanceiroPage() {
               </div>
               <p className="mt-2 text-xs text-mute">
                 {totalRenda > 0
-                  ? `${pctComprometido.toFixed(0)}% da renda já foi em fixos e variáveis`
+                  ? `${pctComprometido.toFixed(0)}% da renda já foi em gastos e metas`
                   : "Adicione sua renda para ver o quanto está comprometido"}
               </p>
 
@@ -437,6 +539,12 @@ export default function FinanceiroPage() {
                   </span>
                   <span className="text-mute text-xs block">VARIÁVEIS</span>
                 </div>
+                <div>
+                  <span className="text-bone font-medium tabular-nums">
+                    {brl(guardadoNoMes)}
+                  </span>
+                  <span className="text-mute text-xs block">GUARDADO</span>
+                </div>
               </div>
             </div>
 
@@ -452,14 +560,15 @@ export default function FinanceiroPage() {
             {sobra < 0 && (
               <div className="rounded-lg border-l-2 border-ember bg-panel p-4">
                 <p className="text-sm text-bone/90 leading-snug">
-                  Fixos e variáveis passam da renda em {brl(Math.abs(sobra))}.
-                  Revise os gastos ou some uma renda extra.
+                  Fixos, variáveis e metas passam da renda em{" "}
+                  {brl(Math.abs(sobra))}. Revise os gastos ou some uma renda
+                  extra.
                 </p>
               </div>
             )}
           </div>
 
-          {/* Entradas, fixos e variáveis */}
+          {/* Entradas, fixos, variáveis e metas */}
           <div className="min-w-0 md:order-1 md:col-span-2 flex flex-col gap-4">
             <div className="rounded-lg border border-line bg-panel p-5">
               <h2 className="text-xs tracking-wide text-mute uppercase mb-2">
@@ -575,6 +684,106 @@ export default function FinanceiroPage() {
                   className="rounded-lg bg-ember px-5 py-2.5 text-sm font-medium text-ink"
                 >
                   Adicionar
+                </button>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-line bg-panel p-5">
+              <h2 className="text-xs tracking-wide text-mute uppercase mb-2">
+                Metas e reservas
+              </h2>
+
+              {metasView.length === 0 ? (
+                <p className="text-sm text-mute py-2">
+                  Nenhuma meta ainda. Reserva de emergência, viagem, um
+                  presente...
+                </p>
+              ) : (
+                <ul className="divide-y divide-line">
+                  {metasView.map((m) => (
+                    <li key={m.id} className="py-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="min-w-0 truncate text-sm text-bone">
+                          {m.nome}
+                        </p>
+                        <button
+                          onClick={() => removeMeta(m.id)}
+                          className="shrink-0 px-1 py-1 text-xs text-mute hover:text-ember"
+                          aria-label={`Remover meta ${m.nome}`}
+                        >
+                          remover
+                        </button>
+                      </div>
+
+                      <div className="mt-2 flex items-baseline justify-between gap-3">
+                        <span className="text-sm text-bone tabular-nums">
+                          {brl(m.guardado)}{" "}
+                          <span className="text-mute">de {brl(m.alvo)}</span>
+                        </span>
+                        <span className="text-xs text-mute tabular-nums">
+                          {m.pct.toFixed(0)}%
+                        </span>
+                      </div>
+
+                      <div className="mt-2 h-2 overflow-hidden rounded-full bg-surface">
+                        <div
+                          className="h-full rounded-full bg-ember transition-all"
+                          style={{ width: `${m.pct}%` }}
+                        />
+                      </div>
+
+                      <p className="mt-2 text-xs text-mute">
+                        {m.guardado >= m.alvo
+                          ? "Meta atingida!"
+                          : `Faltam ${brl(m.alvo - m.guardado)}`}
+                      </p>
+
+                      <div className="mt-3 flex gap-2">
+                        <Campo
+                          className="min-w-0 flex-1"
+                          placeholder="Quanto guardar agora?"
+                          inputMode="decimal"
+                          value={guardarValor[m.id] || ""}
+                          onChange={(e) =>
+                            setGuardarValor((g) => ({
+                              ...g,
+                              [m.id]: e.target.value,
+                            }))
+                          }
+                          onKeyDown={(e) => e.key === "Enter" && guardar(m.id)}
+                        />
+                        <button
+                          onClick={() => guardar(m.id)}
+                          className="rounded-lg bg-ember px-5 py-2.5 text-sm font-medium text-ink"
+                        >
+                          Guardar
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <div className="mt-4 flex flex-wrap gap-2 border-t border-line pt-4">
+                <Campo
+                  className="basis-full"
+                  placeholder="Nome da meta (ex.: Reserva de emergência)"
+                  value={mNome}
+                  onChange={(e) => setMNome(e.target.value)}
+                />
+                <Campo
+                  className="min-w-0 flex-1"
+                  placeholder="Valor alvo"
+                  inputMode="decimal"
+                  value={mAlvo}
+                  onChange={(e) => setMAlvo(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && addMeta()}
+                />
+                <button
+                  onClick={addMeta}
+                  className="rounded-lg bg-ember px-5 py-2.5 text-sm font-medium text-ink"
+                >
+                  Criar meta
                 </button>
               </div>
             </div>
