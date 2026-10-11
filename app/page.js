@@ -31,9 +31,20 @@ function greeting() {
 const brl = (n) =>
   Number(n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-// Quantos dias faltam pro próximo vencimento (0 = hoje).
+const pad = (n) => String(n).padStart(2, "0");
+
+// "2026-10-01" a partir de uma data (primeiro dia do mês dela)
+function primeiroDiaDoMesISO(data) {
+  return `${data.getFullYear()}-${pad(data.getMonth() + 1)}-01`;
+}
+
+// Próximo vencimento de um gasto fixo.
+// Retorna { dias, refMonth }:
+//  - dias: quantos dias faltam (0 = hoje)
+//  - refMonth: mês (dia 01) a que esse vencimento pertence, igual ao
+//    ref_month da tabela fixed_payments
 // Se o dia não existe no mês (ex.: dia 31 em abril), vale o último dia do mês.
-function diasAteVencer(diaVenc, agora) {
+function proximoVencimento(diaVenc, agora) {
   const inicioHoje = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate());
   const y = agora.getFullYear();
   const m = agora.getMonth();
@@ -46,7 +57,10 @@ function diasAteVencer(diaVenc, agora) {
     alvo = new Date(y, m + 1, Math.min(diaVenc, ultimoProximo));
   }
 
-  return Math.round((alvo - inicioHoje) / 86400000);
+  return {
+    dias: Math.round((alvo - inicioHoje) / 86400000),
+    refMonth: primeiroDiaDoMesISO(alvo),
+  };
 }
 
 export default function TodayPage() {
@@ -56,6 +70,9 @@ export default function TodayPage() {
   const [habits, setHabits] = useState([]);
   const [logsByHabit, setLogsByHabit] = useState({});
   const [fixos, setFixos] = useState([]);
+  const [pagos, setPagos] = useState([]); // chaves "idDoFixo|AAAA-MM-01"
+  const [pagando, setPagando] = useState(null); // chave do item sendo gravado
+  const [erroVenc, setErroVenc] = useState("");
   const [fetching, setFetching] = useState(true);
 
   const today = todayISO();
@@ -70,54 +87,77 @@ export default function TodayPage() {
   const headerQuote = useMemo(() => getQuoteForDate(new Date()), []);
   const panelQuote = useMemo(() => getRandomQuote(), []);
 
-  // Gastos fixos que vencem hoje ou nos próximos 3 dias
+  // Gastos fixos que vencem hoje ou nos próximos 3 dias e ainda não foram pagos
   const vencimentos = useMemo(() => {
     const agora = new Date();
     return fixos
       .filter((f) => f.due_day)
-      .map((f) => ({
-        id: f.id,
-        nome: f.name,
-        valor: Number(f.amount),
-        dias: diasAteVencer(f.due_day, agora),
-      }))
-      .filter((f) => f.dias <= 3)
+      .map((f) => {
+        const { dias, refMonth } = proximoVencimento(f.due_day, agora);
+        return {
+          id: f.id,
+          nome: f.name,
+          valor: Number(f.amount),
+          dias,
+          refMonth,
+          chave: `${f.id}|${refMonth}`,
+        };
+      })
+      .filter((f) => f.dias <= 3 && !pagos.includes(f.chave))
       .sort((a, b) => a.dias - b.dias);
-  }, [fixos, today]);
+  }, [fixos, pagos, today]);
 
   const loadData = useCallback(async () => {
     if (!user) return;
 
-    const [todayRes, weekRes, habitsRes, logsRes, fixedRes] = await Promise.all([
-      supabase
-        .from("tasks")
-        .select("*")
-        .eq("user_id", user.id)
-        .eq("due_date", today)
-        .order("created_at", { ascending: true }),
-      supabase
-        .from("tasks")
-        .select("*")
-        .eq("user_id", user.id)
-        .gte("due_date", weekStart)
-        .lte("due_date", weekEnd),
-      supabase
-        .from("habits")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: true }),
-      supabase.from("habit_logs").select("*").eq("user_id", user.id),
-      supabase
-        .from("fixed_expenses")
-        .select("id, name, amount, due_day")
-        .eq("user_id", user.id)
-        .not("due_day", "is", null),
-    ]);
+    // Meses que podem ter vencimento no aviso (atual e próximo)
+    const agora = new Date();
+    const mesAtual = primeiroDiaDoMesISO(agora);
+    const mesSeguinte = primeiroDiaDoMesISO(
+      new Date(agora.getFullYear(), agora.getMonth() + 1, 1)
+    );
+
+    const [todayRes, weekRes, habitsRes, logsRes, fixedRes, payRes] =
+      await Promise.all([
+        supabase
+          .from("tasks")
+          .select("*")
+          .eq("user_id", user.id)
+          .eq("due_date", today)
+          .order("created_at", { ascending: true }),
+        supabase
+          .from("tasks")
+          .select("*")
+          .eq("user_id", user.id)
+          .gte("due_date", weekStart)
+          .lte("due_date", weekEnd),
+        supabase
+          .from("habits")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: true }),
+        supabase.from("habit_logs").select("*").eq("user_id", user.id),
+        supabase
+          .from("fixed_expenses")
+          .select("id, name, amount, due_day")
+          .eq("user_id", user.id)
+          .not("due_day", "is", null),
+        supabase
+          .from("fixed_payments")
+          .select("fixed_expense_id, ref_month")
+          .eq("user_id", user.id)
+          .in("ref_month", [mesAtual, mesSeguinte]),
+      ]);
 
     if (!todayRes.error) setTasks(todayRes.data ?? []);
     if (!weekRes.error) setWeekTasks(weekRes.data ?? []);
     if (!habitsRes.error) setHabits(habitsRes.data ?? []);
     if (!fixedRes.error) setFixos(fixedRes.data ?? []);
+    if (!payRes.error) {
+      setPagos(
+        (payRes.data ?? []).map((p) => `${p.fixed_expense_id}|${p.ref_month}`)
+      );
+    }
 
     const grouped = {};
     (logsRes.data ?? []).forEach((log) => {
@@ -227,6 +267,29 @@ export default function TodayPage() {
     }
   }
 
+  // Marca o vencimento como pago (grava em fixed_payments) e tira do aviso
+  async function handlePagar(v) {
+    if (!user || pagando) return;
+    setPagando(v.chave);
+
+    const { error } = await supabase.from("fixed_payments").insert({
+      user_id: user.id,
+      fixed_expense_id: v.id,
+      ref_month: v.refMonth,
+    });
+
+    setPagando(null);
+
+    // 23505 = já estava marcado como pago (unique), então tudo certo
+    if (error && error.code !== "23505") {
+      setErroVenc("Não foi possível marcar como pago. Tente de novo.");
+      return;
+    }
+
+    setErroVenc("");
+    setPagos((prev) => (prev.includes(v.chave) ? prev : [...prev, v.chave]));
+  }
+
   if (loading || !user) return null;
 
   const doneCount = tasks.filter((t) => t.is_completed).length;
@@ -307,7 +370,7 @@ export default function TodayPage() {
           <TaskForm defaultDate={today} onCreate={handleCreate} />
         </div>
 
-        {vencimentos.length > 0 && (
+        {(vencimentos.length > 0 || erroVenc) && (
           <div className="mb-6 rounded-lg border-l-2 border-ember bg-panel p-4">
             <div className="mb-2 flex items-center justify-between">
               <h2 className="text-xs tracking-wide text-mute uppercase">
@@ -317,10 +380,15 @@ export default function TodayPage() {
                 Ver financeiro →
               </Link>
             </div>
-            <ul className="flex flex-col gap-1.5">
+
+            {erroVenc && (
+              <p className="mb-2 text-sm text-bone/90">{erroVenc}</p>
+            )}
+
+            <ul className="flex flex-col gap-2">
               {vencimentos.map((v) => (
                 <li
-                  key={v.id}
+                  key={v.chave}
                   className="flex items-center justify-between gap-3 text-sm"
                 >
                   <span className="min-w-0 truncate text-bone">
@@ -333,9 +401,18 @@ export default function TodayPage() {
                         : `vence em ${v.dias} dias`}
                     </span>
                   </span>
-                  <span className="shrink-0 text-bone tabular-nums">
-                    {brl(v.valor)}
-                  </span>
+                  <div className="flex shrink-0 items-center gap-3">
+                    <span className="text-bone tabular-nums">
+                      {brl(v.valor)}
+                    </span>
+                    <button
+                      onClick={() => handlePagar(v)}
+                      disabled={pagando === v.chave}
+                      className="rounded-lg bg-ember px-3 py-1 text-xs font-medium text-ink disabled:opacity-60"
+                    >
+                      {pagando === v.chave ? "..." : "Paguei"}
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>
