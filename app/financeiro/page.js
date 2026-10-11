@@ -72,6 +72,7 @@ const fromVar = (r) => {
   return {
     id: r.id,
     nome: desc || r.category,
+    categoria: r.category,
     sub: desc ? `${r.category} · ${data}` : data,
     valor: Number(r.amount),
   };
@@ -331,6 +332,22 @@ export default function FinanceiroPage() {
     () => variaveis.reduce((s, i) => s + i.valor, 0),
     [variaveis]
   );
+
+  // Variáveis do mês somados por categoria (do maior pro menor)
+  const resumoCategorias = useMemo(() => {
+    const mapa = {};
+    variaveis.forEach((v) => {
+      mapa[v.categoria] = (mapa[v.categoria] || 0) + v.valor;
+    });
+    const total = Object.values(mapa).reduce((s, n) => s + n, 0);
+    return Object.entries(mapa)
+      .map(([categoria, valor]) => ({
+        categoria,
+        total: valor,
+        pct: total > 0 ? (valor / total) * 100 : 0,
+      }))
+      .sort((a, b) => b.total - a.total);
+  }, [variaveis]);
 
   // Só o que foi guardado NESTE mês sai da sobra
   const guardadoNoMes = useMemo(() => {
@@ -761,6 +778,37 @@ export default function FinanceiroPage() {
                   {brl(Math.abs(sobra))}. Revise os gastos ou some uma renda
                   extra.
                 </p>
+              </div>
+            )}
+
+            {resumoCategorias.length > 0 && (
+              <div className="rounded-lg border border-line bg-panel p-5">
+                <h2 className="text-xs tracking-wide text-mute uppercase mb-3">
+                  Variáveis por categoria
+                </h2>
+                <ul className="flex flex-col gap-3">
+                  {resumoCategorias.map((c) => (
+                    <li key={c.categoria}>
+                      <div className="flex items-baseline justify-between gap-3">
+                        <span className="min-w-0 truncate text-sm text-bone">
+                          {c.categoria}
+                        </span>
+                        <span className="shrink-0 text-sm text-bone tabular-nums">
+                          {brl(c.total)}{" "}
+                          <span className="text-xs text-mute">
+                            {c.pct.toFixed(0)}%
+                          </span>
+                        </span>
+                      </div>
+                      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface">
+                        <div
+                          className="h-full rounded-full bg-ember transition-all"
+                          style={{ width: `${c.pct}%` }}
+                        />
+                      </div>
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
           </div>
