@@ -230,7 +230,9 @@ export default function RootLayout({ children }) {
         <div className="relative z-10">
           <AuthProvider>{children}</AuthProvider>
         </div>
-        <Watermark />
+                <div className="watermark-wrap">
+          <Watermark />
+        </div>
       </body>
     </html>
   );

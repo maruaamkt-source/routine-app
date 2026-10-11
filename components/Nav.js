@@ -237,17 +237,19 @@ export default function Nav() {
     setOpen(false);
   }, [pathname]);
 
-  // Com o menu aberto: trava o scroll da página e fecha com Esc
+    // Com o menu aberto: trava o scroll, esconde a marca d'água e fecha com Esc
   useEffect(() => {
     if (!open) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    document.documentElement.setAttribute("data-menu", "open");
     const onKey = (e) => {
       if (e.key === "Escape") setOpen(false);
     };
     window.addEventListener("keydown", onKey);
     return () => {
       document.body.style.overflow = prev;
+      document.documentElement.removeAttribute("data-menu");
       window.removeEventListener("keydown", onKey);
     };
   }, [open]);
