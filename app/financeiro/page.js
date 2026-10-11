@@ -35,6 +35,12 @@ function hojeISO() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+// "2026-10-01": primeiro dia do mês atual (chave do pagamento do mês)
+function mesAtualISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-01`;
+}
+
 function limitesDoMes() {
   const d = new Date();
   const y = d.getFullYear();
@@ -117,7 +123,8 @@ function Seletor({ className = "", children, ...props }) {
   );
 }
 
-function Lista({ itens, onRemover, vazio }) {
+// Se passar onTogglePago, aparece uma bolinha de "pago neste mês" em cada item
+function Lista({ itens, onRemover, vazio, pagos, onTogglePago }) {
   if (itens.length === 0) {
     return <p className="text-sm text-mute py-2">{vazio}</p>;
   }
@@ -125,9 +132,20 @@ function Lista({ itens, onRemover, vazio }) {
     <ul className="divide-y divide-line">
       {itens.map((i) => (
         <li key={i.id} className="flex items-center justify-between gap-3 py-3">
-          <div className="min-w-0">
-            <p className="truncate text-sm text-bone">{i.nome}</p>
-            {i.sub ? <p className="text-xs text-mute">{i.sub}</p> : null}
+          <div className="flex min-w-0 items-center gap-3">
+            {onTogglePago && (
+              <input
+                type="checkbox"
+                className="checkbox"
+                checked={(pagos || []).includes(i.id)}
+                onChange={() => onTogglePago(i.id)}
+                aria-label={`Marcar ${i.nome} como pago neste mês`}
+              />
+            )}
+            <div className="min-w-0">
+              <p className="truncate text-sm text-bone">{i.nome}</p>
+              {i.sub ? <p className="text-xs text-mute">{i.sub}</p> : null}
+            </div>
           </div>
           <div className="flex shrink-0 items-center gap-3">
             <span className="text-sm text-bone tabular-nums">{brl(i.valor)}</span>
@@ -149,6 +167,7 @@ export default function FinanceiroPage() {
   const { user, loading } = useAuth();
   const [rendas, setRendas] = useState([]);
   const [fixos, setFixos] = useState([]);
+  const [pagos, setPagos] = useState([]); // ids dos fixos pagos neste mês
   const [parcelas, setParcelas] = useState([]);
   const [variaveis, setVariaveis] = useState([]);
   const [metas, setMetas] = useState([]);
@@ -177,7 +196,7 @@ export default function FinanceiroPage() {
 
     const { ini, fim } = limitesDoMes();
 
-    const [inc, fix, vars, gls, dps, ins] = await Promise.all([
+    const [inc, fix, vars, gls, dps, ins, pay] = await Promise.all([
       supabase
         .from("income")
         .select("*")
@@ -211,6 +230,11 @@ export default function FinanceiroPage() {
         .select("*")
         .eq("user_id", user.id)
         .order("created_at", { ascending: true }),
+      supabase
+        .from("fixed_payments")
+        .select("fixed_expense_id")
+        .eq("user_id", user.id)
+        .eq("ref_month", mesAtualISO()),
     ]);
 
     if (
@@ -219,7 +243,8 @@ export default function FinanceiroPage() {
       vars.error ||
       gls.error ||
       dps.error ||
-      ins.error
+      ins.error ||
+      pay.error
     ) {
       setErro(
         "Não foi possível carregar seus dados. Confira se as tabelas foram criadas."
@@ -234,6 +259,7 @@ export default function FinanceiroPage() {
     const metasDb = (gls.data ?? []).map(fromGoal);
     const depositosDb = (dps.data ?? []).map(fromDeposit);
     const parcelasDb = (ins.data ?? []).map(fromInstallment);
+    const pagosDb = (pay.data ?? []).map((r) => r.fixed_expense_id);
 
     // Migração única: se o banco está vazio e existe algo salvo no aparelho
     // pela primeira versão, envia para o Supabase e limpa o local.
@@ -289,6 +315,7 @@ export default function FinanceiroPage() {
     setMetas(metasDb);
     setDepositos(depositosDb);
     setParcelas(parcelasDb);
+    setPagos(pagosDb);
     setErro("");
     setCarregado(true);
   }, [user]);
@@ -410,6 +437,38 @@ export default function FinanceiroPage() {
       return;
     }
     setFixos((l) => l.filter((i) => i.id !== id));
+    setPagos((l) => l.filter((x) => x !== id));
+  }
+
+  // Marca/desmarca o gasto fixo como pago neste mês
+  async function togglePago(id) {
+    const jaPago = pagos.includes(id);
+
+    if (jaPago) {
+      const { error } = await supabase
+        .from("fixed_payments")
+        .delete()
+        .eq("fixed_expense_id", id)
+        .eq("ref_month", mesAtualISO());
+      if (error) {
+        setErro("Não foi possível atualizar. Tente de novo.");
+        return;
+      }
+      setErro("");
+      setPagos((l) => l.filter((x) => x !== id));
+    } else {
+      const { error } = await supabase.from("fixed_payments").insert({
+        user_id: user.id,
+        fixed_expense_id: id,
+        ref_month: mesAtualISO(),
+      });
+      if (error) {
+        setErro("Não foi possível atualizar. Tente de novo.");
+        return;
+      }
+      setErro("");
+      setPagos((l) => [...l, id]);
+    }
   }
 
   async function addParcela() {
@@ -565,7 +624,12 @@ export default function FinanceiroPage() {
 
   const fixosOrdenados = [...fixos]
     .sort((a, b) => (a.dia || 99) - (b.dia || 99))
-    .map((f) => ({ ...f, sub: f.dia ? `vence dia ${f.dia}` : null }));
+    .map((f) => {
+      const partes = [];
+      if (f.dia) partes.push(`vence dia ${f.dia}`);
+      if (pagos.includes(f.id)) partes.push("pago");
+      return { ...f, sub: partes.length ? partes.join(" · ") : null };
+    });
 
   const dateLabel = new Date().toLocaleDateString("pt-BR", {
     weekday: "long",
@@ -720,6 +784,8 @@ export default function FinanceiroPage() {
                 itens={fixosOrdenados}
                 vazio="Nenhum gasto fixo ainda. Aluguel, internet, assinaturas..."
                 onRemover={removeFixo}
+                pagos={pagos}
+                onTogglePago={togglePago}
               />
               <div className="mt-4 flex flex-wrap gap-2">
                 <Campo
@@ -750,6 +816,12 @@ export default function FinanceiroPage() {
                   Adicionar
                 </button>
               </div>
+              {fixos.length > 0 && (
+                <p className="mt-2 text-xs text-mute">
+                  Marque a bolinha quando pagar a conta deste mês. Ela some do
+                  aviso da tela Hoje e volta desmarcada no mês seguinte.
+                </p>
+              )}
             </div>
 
             <div className="rounded-lg border border-line bg-panel p-5">
