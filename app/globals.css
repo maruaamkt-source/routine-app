@@ -66,6 +66,14 @@ body {
   outline-offset: 2px;
 }
 
+/* Campos de digitar: sem contorno branco, só a borda muda de cor */
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
+  border-color: rgb(var(--ember));
+}
+
 input,
 button {
   font-family: inherit;

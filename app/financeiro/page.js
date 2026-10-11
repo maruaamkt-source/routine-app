@@ -77,6 +77,13 @@ const fromDeposit = (r) => ({
   valor: Number(r.amount),
   data: r.deposited_at,
 });
+const fromInstallment = (r) => ({
+  id: r.id,
+  nome: r.name,
+  valor: Number(r.installment_amount),
+  total: Number(r.total_installments),
+  inicio: r.start_month, // "YYYY-MM-01"
+});
 
 function diasRestantesNoMes() {
   const hoje = new Date();
@@ -142,6 +149,7 @@ export default function FinanceiroPage() {
   const { user, loading } = useAuth();
   const [rendas, setRendas] = useState([]);
   const [fixos, setFixos] = useState([]);
+  const [parcelas, setParcelas] = useState([]);
   const [variaveis, setVariaveis] = useState([]);
   const [metas, setMetas] = useState([]);
   const [depositos, setDepositos] = useState([]);
@@ -153,6 +161,10 @@ export default function FinanceiroPage() {
   const [fNome, setFNome] = useState("");
   const [fValor, setFValor] = useState("");
   const [fDia, setFDia] = useState("");
+  const [pNome, setPNome] = useState("");
+  const [pValor, setPValor] = useState("");
+  const [pTotal, setPTotal] = useState("");
+  const [pAtual, setPAtual] = useState("");
   const [vDesc, setVDesc] = useState("");
   const [vCat, setVCat] = useState(CATEGORIAS[0]);
   const [vValor, setVValor] = useState("");
@@ -165,7 +177,7 @@ export default function FinanceiroPage() {
 
     const { ini, fim } = limitesDoMes();
 
-    const [inc, fix, vars, gls, dps] = await Promise.all([
+    const [inc, fix, vars, gls, dps, ins] = await Promise.all([
       supabase
         .from("income")
         .select("*")
@@ -194,9 +206,21 @@ export default function FinanceiroPage() {
         .select("*")
         .eq("user_id", user.id)
         .order("created_at", { ascending: true }),
+      supabase
+        .from("installments")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: true }),
     ]);
 
-    if (inc.error || fix.error || vars.error || gls.error || dps.error) {
+    if (
+      inc.error ||
+      fix.error ||
+      vars.error ||
+      gls.error ||
+      dps.error ||
+      ins.error
+    ) {
       setErro(
         "Não foi possível carregar seus dados. Confira se as tabelas foram criadas."
       );
@@ -209,6 +233,7 @@ export default function FinanceiroPage() {
     const varsDb = (vars.data ?? []).map(fromVar);
     const metasDb = (gls.data ?? []).map(fromGoal);
     const depositosDb = (dps.data ?? []).map(fromDeposit);
+    const parcelasDb = (ins.data ?? []).map(fromInstallment);
 
     // Migração única: se o banco está vazio e existe algo salvo no aparelho
     // pela primeira versão, envia para o Supabase e limpa o local.
@@ -263,6 +288,7 @@ export default function FinanceiroPage() {
     setVariaveis(varsDb);
     setMetas(metasDb);
     setDepositos(depositosDb);
+    setParcelas(parcelasDb);
     setErro("");
     setCarregado(true);
   }, [user]);
@@ -297,6 +323,32 @@ export default function FinanceiroPage() {
         return { ...m, guardado, pct };
       }),
     [metas, depositos]
+  );
+
+  // Cada parcelamento com a parcela deste mês e o status
+  // ativa = está rodando agora | futura = ainda não começou | quitada = acabou
+  const parcelasView = useMemo(() => {
+    const hoje = new Date();
+    const mesAtual = hoje.getFullYear() * 12 + hoje.getMonth();
+    const ordem = { ativa: 0, futura: 1, quitada: 2 };
+    return parcelas
+      .map((p) => {
+        const [sy, sm] = String(p.inicio).split("-").map(Number);
+        const numero = mesAtual - (sy * 12 + (sm - 1)) + 1;
+        let status = "ativa";
+        if (numero < 1) status = "futura";
+        else if (numero > p.total) status = "quitada";
+        return { ...p, numero, status, inicioLabel: `${pad(sm)}/${sy}` };
+      })
+      .sort((a, b) => ordem[a.status] - ordem[b.status]);
+  }, [parcelas]);
+
+  const totalParcelasMes = useMemo(
+    () =>
+      parcelasView
+        .filter((p) => p.status === "ativa")
+        .reduce((s, p) => s + p.valor, 0),
+    [parcelasView]
   );
 
   async function addRenda() {
@@ -358,6 +410,56 @@ export default function FinanceiroPage() {
       return;
     }
     setFixos((l) => l.filter((i) => i.id !== id));
+  }
+
+  async function addParcela() {
+    const valor = toNumber(pValor);
+    if (!pNome.trim() || valor <= 0) return;
+
+    const total = parseInt(pTotal, 10) || 0;
+    if (total < 1 || total > 120) {
+      setErro("Informe o total de parcelas (de 1 a 120).");
+      return;
+    }
+
+    // parcela em que você está agora (vazio = primeira)
+    const atual = Math.min(total, Math.max(1, parseInt(pAtual, 10) || 1));
+
+    // descobre o mês da 1ª parcela voltando (atual - 1) meses a partir de hoje
+    const hoje = new Date();
+    const inicio = new Date(hoje.getFullYear(), hoje.getMonth() - (atual - 1), 1);
+    const inicioISO = `${inicio.getFullYear()}-${pad(inicio.getMonth() + 1)}-01`;
+
+    const { data, error } = await supabase
+      .from("installments")
+      .insert({
+        user_id: user.id,
+        name: pNome.trim(),
+        installment_amount: valor,
+        total_installments: total,
+        start_month: inicioISO,
+      })
+      .select()
+      .single();
+    if (error) {
+      setErro("Não foi possível salvar o parcelamento. Tente de novo.");
+      return;
+    }
+    setErro("");
+    setParcelas((l) => [...l, fromInstallment(data)]);
+    setPNome("");
+    setPValor("");
+    setPTotal("");
+    setPAtual("");
+  }
+
+  async function removeParcela(id) {
+    const { error } = await supabase.from("installments").delete().eq("id", id);
+    if (error) {
+      setErro("Não foi possível remover. Tente de novo.");
+      return;
+    }
+    setParcelas((l) => l.filter((p) => p.id !== id));
   }
 
   async function addVariavel() {
@@ -453,7 +555,8 @@ export default function FinanceiroPage() {
 
   if (loading || !user) return null;
 
-  const comprometido = totalFixos + totalVariaveis + guardadoNoMes;
+  const comprometido =
+    totalFixos + totalParcelasMes + totalVariaveis + guardadoNoMes;
   const sobra = totalRenda - comprometido;
   const pctComprometido =
     totalRenda > 0 ? Math.min(100, (comprometido / totalRenda) * 100) : 0;
@@ -535,6 +638,12 @@ export default function FinanceiroPage() {
                 </div>
                 <div>
                   <span className="text-bone font-medium tabular-nums">
+                    {brl(totalParcelasMes)}
+                  </span>
+                  <span className="text-mute text-xs block">PARCELAS</span>
+                </div>
+                <div>
+                  <span className="text-bone font-medium tabular-nums">
                     {brl(totalVariaveis)}
                   </span>
                   <span className="text-mute text-xs block">VARIÁVEIS</span>
@@ -560,7 +669,7 @@ export default function FinanceiroPage() {
             {sobra < 0 && (
               <div className="rounded-lg border-l-2 border-ember bg-panel p-4">
                 <p className="text-sm text-bone/90 leading-snug">
-                  Fixos, variáveis e metas passam da renda em{" "}
+                  Fixos, parcelas, variáveis e metas passam da renda em{" "}
                   {brl(Math.abs(sobra))}. Revise os gastos ou some uma renda
                   extra.
                 </p>
@@ -568,7 +677,7 @@ export default function FinanceiroPage() {
             )}
           </div>
 
-          {/* Entradas, fixos, variáveis e metas */}
+          {/* Entradas, fixos, parcelas, variáveis e metas */}
           <div className="min-w-0 md:order-1 md:col-span-2 flex flex-col gap-4">
             <div className="rounded-lg border border-line bg-panel p-5">
               <h2 className="text-xs tracking-wide text-mute uppercase mb-2">
@@ -641,6 +750,113 @@ export default function FinanceiroPage() {
                   Adicionar
                 </button>
               </div>
+            </div>
+
+            <div className="rounded-lg border border-line bg-panel p-5">
+              <h2 className="text-xs tracking-wide text-mute uppercase mb-2">
+                Parcelas
+              </h2>
+
+              {parcelasView.length === 0 ? (
+                <p className="text-sm text-mute py-2">
+                  Nenhuma compra parcelada. Celular, geladeira, cartão...
+                </p>
+              ) : (
+                <ul className="divide-y divide-line">
+                  {parcelasView.map((p) => (
+                    <li
+                      key={p.id}
+                      className={
+                        "py-3 " + (p.status === "ativa" ? "" : "opacity-60")
+                      }
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm text-bone">{p.nome}</p>
+                          <p className="text-xs text-mute">
+                            {p.status === "ativa" &&
+                              (p.total - p.numero === 0
+                                ? `Parcela ${p.numero} de ${p.total} · última parcela`
+                                : `Parcela ${p.numero} de ${p.total} · faltam ${
+                                    p.total - p.numero
+                                  }`)}
+                            {p.status === "futura" &&
+                              `Começa em ${p.inicioLabel} · ${p.total} parcelas`}
+                            {p.status === "quitada" &&
+                              `Quitada · ${p.total} parcelas`}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-3">
+                          <span className="text-sm text-bone tabular-nums">
+                            {brl(p.valor)}
+                          </span>
+                          <button
+                            onClick={() => removeParcela(p.id)}
+                            className="px-1 py-1 text-xs text-mute hover:text-ember"
+                            aria-label={`Remover ${p.nome}`}
+                          >
+                            remover
+                          </button>
+                        </div>
+                      </div>
+                      {p.status === "ativa" && (
+                        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface">
+                          <div
+                            className="h-full rounded-full bg-ember transition-all"
+                            style={{
+                              width: `${Math.min(
+                                100,
+                                (p.numero / p.total) * 100
+                              )}%`,
+                            }}
+                          />
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Campo
+                  className="basis-full"
+                  placeholder="Ex.: Celular"
+                  value={pNome}
+                  onChange={(e) => setPNome(e.target.value)}
+                />
+                <Campo
+                  className="min-w-0 flex-1"
+                  placeholder="Valor da parcela"
+                  inputMode="decimal"
+                  value={pValor}
+                  onChange={(e) => setPValor(e.target.value)}
+                />
+                <Campo
+                  className="w-20"
+                  placeholder="Total"
+                  inputMode="numeric"
+                  value={pTotal}
+                  onChange={(e) => setPTotal(e.target.value)}
+                />
+                <Campo
+                  className="w-20"
+                  placeholder="Atual"
+                  inputMode="numeric"
+                  value={pAtual}
+                  onChange={(e) => setPAtual(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && addParcela()}
+                />
+                <button
+                  onClick={addParcela}
+                  className="rounded-lg bg-ember px-5 py-2.5 text-sm font-medium text-ink"
+                >
+                  Adicionar
+                </button>
+              </div>
+              <p className="mt-2 text-xs text-mute">
+                Total = quantas parcelas tem a compra. Atual = qual parcela você
+                está pagando neste mês (deixe vazio se for a primeira).
+              </p>
             </div>
 
             <div className="rounded-lg border border-line bg-panel p-5">
