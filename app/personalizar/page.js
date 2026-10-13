@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import Nav from "@/components/Nav";
 import { useAuth } from "@/components/AuthProvider";
+import { useModulos } from "@/components/ModulosProvider";
+import { MODULOS, TODOS } from "@/lib/modulos";
 
 const THEMES = [
   { key: "dark", label: "Escuro" },
@@ -336,6 +338,7 @@ function ColorField({ label, value, onChange }) {
 
 export default function PersonalizarPage() {
   const { user, loading } = useAuth();
+  const { modulos, salvarModulos } = useModulos();
   const [theme, setTheme] = useState("auto");
   const [accent, setAccent] = useState("ouro");
   const [titleFont, setTitleFont] = useState("fraunces");
@@ -347,6 +350,8 @@ export default function PersonalizarPage() {
   const [glow, setGlow] = useState(true);
   const [myThemes, setMyThemes] = useState([]);
   const [saveName, setSaveName] = useState("");
+  const [modSalvando, setModSalvando] = useState(false);
+  const [modErro, setModErro] = useState("");
 
   useEffect(() => {
     try {
@@ -369,6 +374,34 @@ export default function PersonalizarPage() {
   }, []);
 
   if (loading || !user) return null;
+
+  // ---------- Módulos (salvos na conta, não neste aparelho) ----------
+  async function alternarModulo(key) {
+    if (modSalvando) return;
+    const novo = modulos.includes(key)
+      ? modulos.filter((k) => k !== key)
+      : [...modulos, key];
+    if (novo.length === 0) {
+      setModErro("Deixe pelo menos uma área ligada.");
+      return;
+    }
+    setModErro("");
+    setModSalvando(true);
+    const { error } = await salvarModulos(novo);
+    setModSalvando(false);
+    if (error) setModErro("Não consegui salvar. Tenta de novo.");
+  }
+
+  async function ligarTodosModulos() {
+    if (modSalvando) return;
+    setModErro("");
+    setModSalvando(true);
+    const { error } = await salvarModulos([...TODOS]);
+    setModSalvando(false);
+    if (error) setModErro("Não consegui salvar. Tenta de novo.");
+  }
+
+  const todosLigados = TODOS.every((k) => modulos.includes(k));
 
   // Escolher uma cor própria ativa o tema Personalizado
   function pickCustom(bg, ac) {
@@ -486,6 +519,85 @@ export default function PersonalizarPage() {
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="min-w-0 rounded-lg border border-line bg-panel p-5 md:col-span-2">
+            <h2 className="text-xs tracking-wide text-mute uppercase mb-4">
+              Módulos
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              {MODULOS.map((m) => {
+                const ativo = modulos.includes(m.key);
+                return (
+                  <button
+                    key={m.key}
+                    type="button"
+                    role="checkbox"
+                    aria-checked={ativo}
+                    disabled={modSalvando}
+                    onClick={() => alternarModulo(m.key)}
+                    className={`min-w-0 text-left px-4 py-3 rounded-lg border transition-colors disabled:opacity-60 ${
+                      ativo
+                        ? "border-ember bg-ember/10"
+                        : "border-line hover:border-mute"
+                    }`}
+                  >
+                    <span className="flex items-center gap-3">
+                      <span className="text-xl leading-none" aria-hidden="true">
+                        {m.emoji}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-2">
+                          <span className="text-sm text-bone truncate">
+                            {m.nome}
+                          </span>
+                          {!m.pronto && (
+                            <span className="text-[10px] text-mute border border-line rounded-full px-2 py-0.5 shrink-0">
+                              em breve
+                            </span>
+                          )}
+                        </span>
+                        <span className="block text-xs text-mute mt-0.5 truncate">
+                          {m.descricao}
+                        </span>
+                      </span>
+                      <span
+                        className={`shrink-0 grid place-items-center w-5 h-5 rounded-full border text-[11px] ${
+                          ativo
+                            ? "border-ember bg-ember text-ink"
+                            : "border-line text-transparent"
+                        }`}
+                        aria-hidden="true"
+                      >
+                        ✓
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {modErro && (
+              <div className="rounded-lg border-l-2 border-ember bg-panel p-4 mt-4">
+                <p className="text-sm text-bone">{modErro}</p>
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center gap-3 mt-4">
+              <button
+                type="button"
+                onClick={ligarTodosModulos}
+                disabled={todosLigados || modSalvando}
+                className="px-4 py-2 rounded-full text-sm border border-line text-mute hover:text-bone transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Ligar todas
+              </button>
+              <p className="text-xs text-mute min-w-0">
+                Só as áreas ligadas aparecem no menu. Fica salvo na sua conta,
+                em qualquer aparelho. As marcadas "em breve" entram no menu
+                quando ficarem prontas.
+              </p>
+            </div>
+          </div>
+
           <div className="min-w-0 rounded-lg border border-line bg-panel p-5">
             <h2 className="text-xs tracking-wide text-mute uppercase mb-4">
               Tema
