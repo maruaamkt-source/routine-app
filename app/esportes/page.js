@@ -25,7 +25,7 @@ function ordenar(lista) {
   );
 }
 
-function TreinoItem({ t, aberto, exercicios, onToggle, onApagar }) {
+function TreinoItem({ t, aberto, exercicios, onToggle, onEditar, onApagar }) {
   return (
     <li className="rounded-lg border border-line bg-surface">
       <button
@@ -64,13 +64,22 @@ function TreinoItem({ t, aberto, exercicios, onToggle, onApagar }) {
               </ul>
             ))}
           {t.note && <p className="text-sm text-bone/90">{t.note}</p>}
-          <button
-            type="button"
-            onClick={onApagar}
-            className="text-xs text-mute hover:text-bone"
-          >
-            Apagar treino
-          </button>
+          <div className="flex items-center gap-4">
+            <button
+              type="button"
+              onClick={onEditar}
+              className="text-xs text-ember hover:underline"
+            >
+              Editar treino
+            </button>
+            <button
+              type="button"
+              onClick={onApagar}
+              className="text-xs text-mute hover:text-bone"
+            >
+              Apagar treino
+            </button>
+          </div>
         </div>
       )}
     </li>
@@ -87,6 +96,7 @@ export default function EsportesPage() {
   const [erro, setErro] = useState("");
   const [aba, setAba] = useState("treinos");
   const [mostrarForm, setMostrarForm] = useState(false);
+  const [editando, setEditando] = useState(null);
   const [diaSelecionado, setDiaSelecionado] = useState("");
   const [visiveis, setVisiveis] = useState(10);
   const [abertoId, setAbertoId] = useState("");
@@ -201,6 +211,20 @@ export default function EsportesPage() {
     }
   }
 
+  async function buscarExercicios(t) {
+    const { data, error } = await supabase
+      .from("workout_exercises")
+      .select("id, name, sets, reps, weight_kg, position")
+      .eq("workout_id", t.id)
+      .eq("user_id", user.id)
+      .order("position");
+    if (error) {
+      setErro("Não consegui carregar os exercícios: " + error.message);
+      return null;
+    }
+    return data || [];
+  }
+
   async function alternarTreino(t) {
     if (abertoId === t.id) {
       setAbertoId("");
@@ -208,18 +232,28 @@ export default function EsportesPage() {
     }
     setAbertoId(t.id);
     if (temExercicios(t.type) && exPorTreino[t.id] === undefined) {
-      const { data, error } = await supabase
-        .from("workout_exercises")
-        .select("id, name, sets, reps, weight_kg, position")
-        .eq("workout_id", t.id)
-        .eq("user_id", user.id)
-        .order("position");
-      if (error) {
-        setErro("Não consegui carregar os exercícios: " + error.message);
-        return;
-      }
-      setExPorTreino((prev) => ({ ...prev, [t.id]: data || [] }));
+      const lista = await buscarExercicios(t);
+      if (lista === null) return;
+      setExPorTreino((prev) => ({ ...prev, [t.id]: lista }));
     }
+  }
+
+  async function iniciarEdicao(t) {
+    let exercicios = [];
+    if (temExercicios(t.type)) {
+      if (exPorTreino[t.id] !== undefined) {
+        exercicios = exPorTreino[t.id];
+      } else {
+        const lista = await buscarExercicios(t);
+        if (lista === null) return;
+        exercicios = lista;
+        setExPorTreino((prev) => ({ ...prev, [t.id]: lista }));
+      }
+    }
+    setErro("");
+    setMostrarForm(false);
+    setEditando({ treino: t, exercicios });
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function apagarTreino(t) {
@@ -235,10 +269,17 @@ export default function EsportesPage() {
     }
     setTreinos((prev) => prev.filter((x) => x.id !== t.id));
     if (abertoId === t.id) setAbertoId("");
+    if (editando && editando.treino.id === t.id) setEditando(null);
   }
 
   function aoSalvar(treino, exerciciosInseridos) {
-    setTreinos((prev) => ordenar([treino, ...prev]));
+    setTreinos((prev) => {
+      const jaExiste = prev.some((x) => x.id === treino.id);
+      if (jaExiste) {
+        return ordenar(prev.map((x) => (x.id === treino.id ? treino : x)));
+      }
+      return ordenar([treino, ...prev]);
+    });
     setExPorTreino((prev) => ({ ...prev, [treino.id]: exerciciosInseridos }));
     setNomes((prev) => {
       const novos = exerciciosInseridos.map((e) => e.name);
@@ -247,6 +288,7 @@ export default function EsportesPage() {
     });
     setDiaSelecionado(treino.day);
     setMostrarForm(false);
+    setEditando(null);
   }
 
   function escolherDia(iso) {
@@ -334,12 +376,25 @@ export default function EsportesPage() {
                 </p>
               </div>
 
-              {/* Registrar */}
-              {mostrarForm ? (
+              {/* Registrar / Editar */}
+              {editando ? (
+                <FormTreino
+                  key={editando.treino.id}
+                  user={user}
+                  treinos={treinos}
+                  nomes={nomes}
+                  treinoEditando={editando.treino}
+                  exerciciosEditando={editando.exercicios}
+                  onSalvo={aoSalvar}
+                  onCancelar={() => setEditando(null)}
+                />
+              ) : mostrarForm ? (
                 <FormTreino
                   user={user}
                   treinos={treinos}
                   nomes={nomes}
+                  treinoEditando={null}
+                  exerciciosEditando={[]}
                   onSalvo={aoSalvar}
                   onCancelar={() => setMostrarForm(false)}
                 />
@@ -387,6 +442,7 @@ export default function EsportesPage() {
                             aberto={abertoId === t.id}
                             exercicios={exPorTreino[t.id]}
                             onToggle={() => alternarTreino(t)}
+                            onEditar={() => iniciarEdicao(t)}
                             onApagar={() => apagarTreino(t)}
                           />
                         ))}
@@ -413,6 +469,7 @@ export default function EsportesPage() {
                           aberto={abertoId === t.id}
                           exercicios={exPorTreino[t.id]}
                           onToggle={() => alternarTreino(t)}
+                          onEditar={() => iniciarEdicao(t)}
                           onApagar={() => apagarTreino(t)}
                         />
                       ))}
