@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/components/AuthProvider";
 import Nav from "@/components/Nav";
 import HistoricoMensal from "@/components/HistoricoMensal";
+import GastosPorCategoria from "@/components/GastosPorCategoria";
 
 const CATEGORIAS = [
   "Mercado",
@@ -1999,6 +2000,15 @@ export default function FinanceiroPage() {
             parcelas={totalParcelasMes}
             variaveis={totalVariaveis}
             guardado={guardadoNoMes}
+            onEscolherMes={mudarMes}
+          />
+        </div>
+                <div className="mt-4">
+          <GastosPorCategoria
+            userId={user.id}
+            mesSel={mesSel}
+            pronto={carregado && !erro}
+            atualizar={totalVariaveis}
             onEscolherMes={mudarMes}
           />
         </div>
