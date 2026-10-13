@@ -6,6 +6,7 @@ import Nav from "@/components/Nav";
 import Oracao from "@/components/espiritual/Oracao";
 import Versiculos from "@/components/espiritual/Versiculos";
 import HabitosEspirituais from "@/components/espiritual/HabitosEspirituais";
+import PlanoLeitura from "@/components/espiritual/PlanoLeitura";
 import { getQuoteForDate } from "@/lib/quotes";
 
 const ABAS = [
@@ -75,12 +76,8 @@ export default function EspiritualPage() {
 
         {aba === "leitura" && (
           <div className="flex flex-col gap-4">
+            <PlanoLeitura user={user} />
             <HabitosEspirituais user={user} />
-            <div className="rounded-lg border border-line bg-panel p-5">
-              <p className="text-sm text-mute">
-                O plano de leitura bíblica chega na próxima etapa.
-              </p>
-            </div>
           </div>
         )}
       </main>
