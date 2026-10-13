@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/components/AuthProvider";
 import Nav from "@/components/Nav";
@@ -35,16 +35,38 @@ function hojeISO() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-// "2026-10-01": primeiro dia do mês atual (chave do pagamento do mês)
+// "2026-10-01": primeiro dia do mês atual
 function mesAtualISO() {
   const d = new Date();
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-01`;
 }
 
-function limitesDoMes() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = d.getMonth();
+// "2026-10-01" -> { y: 2026, m: 9 } (m começa em 0, como no Date)
+function parseMes(iso) {
+  const [y, m] = String(iso).split("-").map(Number);
+  return { y, m: m - 1 };
+}
+
+// soma (ou subtrai) meses de um "YYYY-MM-01"
+function somarMes(iso, delta) {
+  const { y, m } = parseMes(iso);
+  const d = new Date(y, m + delta, 1);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-01`;
+}
+
+// "2026-10-01" -> "Outubro de 2026"
+function rotuloMes(iso) {
+  const { y, m } = parseMes(iso);
+  const txt = new Date(y, m, 1).toLocaleDateString("pt-BR", {
+    month: "long",
+    year: "numeric",
+  });
+  return txt.charAt(0).toUpperCase() + txt.slice(1);
+}
+
+// primeiro e último dia do mês escolhido
+function limitesDoMes(iso) {
+  const { y, m } = parseMes(iso);
   const ultimo = new Date(y, m + 1, 0).getDate();
   return {
     ini: `${y}-${pad(m + 1)}-01`,
@@ -52,11 +74,28 @@ function limitesDoMes() {
   };
 }
 
-// Mês da 1ª parcela, voltando (atual - 1) meses a partir de hoje
-function inicioDaParcela(atual) {
-  const hoje = new Date();
-  const inicio = new Date(hoje.getFullYear(), hoje.getMonth() - (atual - 1), 1);
-  return `${inicio.getFullYear()}-${pad(inicio.getMonth() + 1)}-01`;
+// Data usada ao lançar algo novo: no mês atual é hoje; em outro mês, dia 1
+function dataParaNovo(mesSel) {
+  return mesSel === mesAtualISO() ? hojeISO() : mesSel;
+}
+
+// "YYYY-MM-01" do mês em que o registro foi criado (fuso local)
+function mesDoTimestamp(ts) {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-01`;
+}
+
+// Em outro mês que não o atual, grava created_at no mês escolhido
+// para a renda/gasto fixo passar a valer a partir dele
+function extraCriacao(mesSel) {
+  if (mesSel === mesAtualISO()) return {};
+  const { y, m } = parseMes(mesSel);
+  return { created_at: new Date(y, m, 1, 12, 0, 0).toISOString() };
+}
+
+// Mês da 1ª parcela, voltando (atual - 1) meses a partir do mês escolhido
+function inicioDaParcela(atual, mesSel) {
+  return somarMes(mesSel, -(atual - 1));
 }
 
 // "2026-10-11" -> "11/10"
@@ -69,12 +108,18 @@ function dataCurta(iso) {
 const valorParaCampo = (n) => String(n).replace(".", ",");
 
 // banco -> tela
-const fromIncome = (r) => ({ id: r.id, nome: r.name, valor: Number(r.amount) });
+const fromIncome = (r) => ({
+  id: r.id,
+  nome: r.name,
+  valor: Number(r.amount),
+  desde: mesDoTimestamp(r.created_at),
+});
 const fromFixed = (r) => ({
   id: r.id,
   nome: r.name,
   valor: Number(r.amount),
   dia: r.due_day,
+  desde: mesDoTimestamp(r.created_at),
 });
 const fromVar = (r) => {
   const desc = (r.description || "").trim();
@@ -221,11 +266,12 @@ const EDIT_VAZIO = {
 
 export default function FinanceiroPage() {
   const { user, loading } = useAuth();
+  const [mesSel, setMesSel] = useState(() => mesAtualISO()); // mês que está sendo visto
   const [rendas, setRendas] = useState([]);
   const [fixos, setFixos] = useState([]);
-  const [pagos, setPagos] = useState([]); // ids dos fixos pagos neste mês
+  const [pagos, setPagos] = useState([]); // ids dos fixos pagos no mês selecionado
   const [parcelas, setParcelas] = useState([]);
-  const [pagosParc, setPagosParc] = useState([]); // ids das parcelas pagas neste mês
+  const [pagosParc, setPagosParc] = useState([]); // ids das parcelas pagas no mês selecionado
   const [variaveis, setVariaveis] = useState([]);
   const [limites, setLimites] = useState([]); // limites por categoria
   const [metas, setMetas] = useState([]);
@@ -253,10 +299,15 @@ export default function FinanceiroPage() {
   const [historicoAberto, setHistoricoAberto] = useState({}); // { metaId: true }
   const [edit, setEdit] = useState(null); // item em edição (ou null)
 
+  // Conta as buscas ao banco: se o mês mudar no meio de uma busca,
+  // a resposta antiga é ignorada
+  const reqRef = useRef(0);
+
   const loadData = useCallback(async () => {
     if (!user) return;
 
-    const { ini, fim } = limitesDoMes();
+    const req = ++reqRef.current;
+    const { ini, fim } = limitesDoMes(mesSel);
 
     const [inc, fix, vars, gls, dps, ins, pay, ipay, lim] = await Promise.all([
       supabase
@@ -296,18 +347,21 @@ export default function FinanceiroPage() {
         .from("fixed_payments")
         .select("fixed_expense_id")
         .eq("user_id", user.id)
-        .eq("ref_month", mesAtualISO()),
+        .eq("ref_month", mesSel),
       supabase
         .from("installment_payments")
         .select("installment_id")
         .eq("user_id", user.id)
-        .eq("ref_month", mesAtualISO()),
+        .eq("ref_month", mesSel),
       supabase
         .from("category_limits")
         .select("*")
         .eq("user_id", user.id)
         .order("created_at", { ascending: true }),
     ]);
+
+    // o mês mudou enquanto esperava: descarta essa resposta
+    if (req !== reqRef.current) return;
 
     if (
       inc.error ||
@@ -385,6 +439,8 @@ export default function FinanceiroPage() {
       } catch {}
     }
 
+    if (req !== reqRef.current) return;
+
     setRendas(rendasDb);
     setFixos(fixosDb);
     setVariaveis(varsDb);
@@ -396,14 +452,38 @@ export default function FinanceiroPage() {
     setLimites(limitesDb);
     setErro("");
     setCarregado(true);
-  }, [user]);
+  }, [user, mesSel]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  const totalRenda = useMemo(() => rendas.reduce((s, i) => s + i.valor, 0), [rendas]);
-  const totalFixos = useMemo(() => fixos.reduce((s, i) => s + i.valor, 0), [fixos]);
+  const ehMesAtual = mesSel === mesAtualISO();
+
+  function mudarMes(novo) {
+    setEdit(null);
+    setCarregado(false);
+    setMesSel(novo);
+  }
+
+  // Renda e fixos só aparecem a partir do mês em que foram criados
+  const rendasMes = useMemo(
+    () => rendas.filter((r) => r.desde <= mesSel),
+    [rendas, mesSel]
+  );
+  const fixosMes = useMemo(
+    () => fixos.filter((f) => f.desde <= mesSel),
+    [fixos, mesSel]
+  );
+
+  const totalRenda = useMemo(
+    () => rendasMes.reduce((s, i) => s + i.valor, 0),
+    [rendasMes]
+  );
+  const totalFixos = useMemo(
+    () => fixosMes.reduce((s, i) => s + i.valor, 0),
+    [fixosMes]
+  );
   const totalVariaveis = useMemo(
     () => variaveis.reduce((s, i) => s + i.valor, 0),
     [variaveis]
@@ -460,13 +540,13 @@ export default function FinanceiroPage() {
     [categoriasView]
   );
 
-  // Só o que foi guardado NESTE mês sai da sobra
+  // Só o que foi guardado no mês selecionado sai da sobra
   const guardadoNoMes = useMemo(() => {
-    const { ini, fim } = limitesDoMes();
+    const { ini, fim } = limitesDoMes(mesSel);
     return depositos
       .filter((d) => d.data >= ini && d.data <= fim)
       .reduce((s, d) => s + d.valor, 0);
-  }, [depositos]);
+  }, [depositos, mesSel]);
 
   // Cada meta com o total guardado (todos os meses), o progresso
   // e o histórico de depósitos (mais recente primeiro)
@@ -482,17 +562,17 @@ export default function FinanceiroPage() {
     [metas, depositos]
   );
 
-  // Cada parcelamento com a parcela deste mês, o status e o que falta quitar
-  // ativa = está rodando agora | futura = ainda não começou | quitada = acabou
-  // Se a parcela deste mês está marcada como paga, ela sai da conta de "restam"
+  // Cada parcelamento com a parcela do mês selecionado, o status e o que falta quitar
+  // ativa = está rodando nesse mês | futura = ainda não começou | quitada = acabou
+  // Se a parcela desse mês está marcada como paga, ela sai da conta de "restam"
   const parcelasView = useMemo(() => {
-    const hoje = new Date();
-    const mesAtual = hoje.getFullYear() * 12 + hoje.getMonth();
+    const { y, m } = parseMes(mesSel);
+    const mesIdx = y * 12 + m;
     const ordem = { ativa: 0, futura: 1, quitada: 2 };
     return parcelas
       .map((p) => {
         const [sy, sm] = String(p.inicio).split("-").map(Number);
-        const numero = mesAtual - (sy * 12 + (sm - 1)) + 1;
+        const numero = mesIdx - (sy * 12 + (sm - 1)) + 1;
         let status = "ativa";
         if (numero < 1) status = "futura";
         else if (numero > p.total) status = "quitada";
@@ -514,7 +594,7 @@ export default function FinanceiroPage() {
         };
       })
       .sort((a, b) => ordem[a.status] - ordem[b.status]);
-  }, [parcelas, pagosParc]);
+  }, [parcelas, pagosParc, mesSel]);
 
   const totalParcelasMes = useMemo(
     () =>
@@ -535,7 +615,12 @@ export default function FinanceiroPage() {
     if (!rNome.trim() || valor <= 0) return;
     const { data, error } = await supabase
       .from("income")
-      .insert({ user_id: user.id, name: rNome.trim(), amount: valor })
+      .insert({
+        user_id: user.id,
+        name: rNome.trim(),
+        amount: valor,
+        ...extraCriacao(mesSel),
+      })
       .select()
       .single();
     if (error) {
@@ -568,6 +653,7 @@ export default function FinanceiroPage() {
         name: fNome.trim(),
         amount: valor,
         due_day: dia,
+        ...extraCriacao(mesSel),
       })
       .select()
       .single();
@@ -592,7 +678,7 @@ export default function FinanceiroPage() {
     setPagos((l) => l.filter((x) => x !== id));
   }
 
-  // Marca/desmarca o gasto fixo como pago neste mês
+  // Marca/desmarca o gasto fixo como pago no mês selecionado
   async function togglePago(id) {
     const jaPago = pagos.includes(id);
 
@@ -601,7 +687,7 @@ export default function FinanceiroPage() {
         .from("fixed_payments")
         .delete()
         .eq("fixed_expense_id", id)
-        .eq("ref_month", mesAtualISO());
+        .eq("ref_month", mesSel);
       if (error) {
         setErro("Não foi possível atualizar. Tente de novo.");
         return;
@@ -612,7 +698,7 @@ export default function FinanceiroPage() {
       const { error } = await supabase.from("fixed_payments").insert({
         user_id: user.id,
         fixed_expense_id: id,
-        ref_month: mesAtualISO(),
+        ref_month: mesSel,
       });
       if (error) {
         setErro("Não foi possível atualizar. Tente de novo.");
@@ -623,7 +709,7 @@ export default function FinanceiroPage() {
     }
   }
 
-  // Marca/desmarca a parcela deste mês como paga
+  // Marca/desmarca a parcela do mês selecionado como paga
   async function togglePagoParcela(id) {
     const jaPaga = pagosParc.includes(id);
 
@@ -632,7 +718,7 @@ export default function FinanceiroPage() {
         .from("installment_payments")
         .delete()
         .eq("installment_id", id)
-        .eq("ref_month", mesAtualISO());
+        .eq("ref_month", mesSel);
       if (error) {
         setErro("Não foi possível atualizar. Tente de novo.");
         return;
@@ -643,7 +729,7 @@ export default function FinanceiroPage() {
       const { error } = await supabase.from("installment_payments").insert({
         user_id: user.id,
         installment_id: id,
-        ref_month: mesAtualISO(),
+        ref_month: mesSel,
       });
       if (error) {
         setErro("Não foi possível atualizar. Tente de novo.");
@@ -664,7 +750,7 @@ export default function FinanceiroPage() {
       return;
     }
 
-    // parcela em que você está agora (vazio = primeira)
+    // parcela em que você está no mês selecionado (vazio = primeira)
     const atual = Math.min(total, Math.max(1, parseInt(pAtual, 10) || 1));
 
     const { data, error } = await supabase
@@ -674,7 +760,7 @@ export default function FinanceiroPage() {
         name: pNome.trim(),
         installment_amount: valor,
         total_installments: total,
-        start_month: inicioDaParcela(atual),
+        start_month: inicioDaParcela(atual, mesSel),
       })
       .select()
       .single();
@@ -710,7 +796,7 @@ export default function FinanceiroPage() {
         description: vDesc.trim() || null,
         category: vCat,
         amount: valor,
-        spent_at: hojeISO(),
+        spent_at: dataParaNovo(mesSel),
       })
       .select()
       .single();
@@ -790,7 +876,7 @@ export default function FinanceiroPage() {
 
   async function removeMeta(id) {
     const ok = window.confirm(
-      "Remover essa meta e tudo que foi guardado nela? O valor deste mês volta para a sobra livre."
+      "Remover essa meta e tudo que foi guardado nela? O valor guardado volta para a sobra livre dos meses em que foi depositado."
     );
     if (!ok) return;
     const { error } = await supabase.from("goals").delete().eq("id", id);
@@ -812,7 +898,7 @@ export default function FinanceiroPage() {
         user_id: user.id,
         goal_id: metaId,
         amount: valor,
-        deposited_at: hojeISO(),
+        deposited_at: dataParaNovo(mesSel),
       })
       .select()
       .single();
@@ -968,7 +1054,7 @@ export default function FinanceiroPage() {
       const atualTxt = edit.atual.trim();
       if (atualTxt && atualTxt !== edit.atualOrig) {
         const atual = Math.min(total, Math.max(1, parseInt(atualTxt, 10) || 1));
-        campos.start_month = inicioDaParcela(atual);
+        campos.start_month = inicioDaParcela(atual, mesSel);
       }
       const { data, error } = await supabase
         .from("installments")
@@ -1136,8 +1222,8 @@ export default function FinanceiroPage() {
             onKeyDown={teclasEdicao}
           />
           <p className="basis-full text-xs text-mute">
-            Total = quantas parcelas tem a compra. Atual = qual parcela você
-            paga neste mês (não mexa se não quiser mudar).
+            Total = quantas parcelas tem a compra. Atual = qual parcela cai no
+            mês que você está vendo (não mexa se não quiser mudar).
           </p>
           {botoes}
         </div>
@@ -1177,7 +1263,7 @@ export default function FinanceiroPage() {
   const dias = diasRestantesNoMes();
   const porDia = sobra > 0 ? sobra / dias : 0;
 
-  const fixosOrdenados = [...fixos]
+  const fixosOrdenados = [...fixosMes]
     .sort((a, b) => (a.dia || 99) - (b.dia || 99))
     .map((f) => {
       const partes = [];
@@ -1206,6 +1292,41 @@ export default function FinanceiroPage() {
           <p className="text-sm text-mute">
             Veja quanto entra, quanto já está comprometido e quanto sobra.
           </p>
+
+          <div className="mt-5 flex items-center gap-2">
+            <button
+              onClick={() => mudarMes(somarMes(mesSel, -1))}
+              className="rounded-lg border border-line bg-panel px-3.5 py-2 text-sm text-bone hover:border-ember"
+              aria-label="Mês anterior"
+            >
+              ‹
+            </button>
+            <span className="min-w-[10.5rem] text-center font-serif text-lg text-bone">
+              {rotuloMes(mesSel)}
+            </span>
+            <button
+              onClick={() => mudarMes(somarMes(mesSel, 1))}
+              className="rounded-lg border border-line bg-panel px-3.5 py-2 text-sm text-bone hover:border-ember"
+              aria-label="Próximo mês"
+            >
+              ›
+            </button>
+            {!ehMesAtual && (
+              <button
+                onClick={() => mudarMes(mesAtualISO())}
+                className="ml-1 rounded-lg border border-line px-3 py-2 text-xs text-mute hover:text-ember"
+              >
+                Hoje
+              </button>
+            )}
+          </div>
+
+          {!ehMesAtual && (
+            <p className="mt-2 text-xs text-mute">
+              Renda e gastos fixos aparecem a partir do mês em que foram
+              criados. O que você adicionar aqui vale a partir deste mês.
+            </p>
+          )}
         </div>
 
         {erro && (
@@ -1214,7 +1335,12 @@ export default function FinanceiroPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div
+          className={
+            "grid grid-cols-1 md:grid-cols-3 gap-4 transition-opacity " +
+            (carregado ? "" : "opacity-50")
+          }
+        >
           {/* Resultado (primeiro no celular, à direita no desktop) */}
           <div className="min-w-0 md:order-2 flex flex-col gap-4">
             <div className="rounded-lg border border-line bg-panel p-5">
@@ -1276,7 +1402,7 @@ export default function FinanceiroPage() {
               </div>
             </div>
 
-            {sobra > 0 && (
+            {sobra > 0 && ehMesAtual && (
               <div className="rounded-lg border-l-2 border-ember bg-panel p-4">
                 <p className="text-sm text-bone/90 leading-snug">
                   Dá para gastar cerca de{" "}
@@ -1376,7 +1502,8 @@ export default function FinanceiroPage() {
 
               <div className="mt-4 border-t border-line pt-4">
                 <p className="mb-2 text-xs text-mute">
-                  Definir limite mensal (se já existir, o valor é trocado)
+                  Definir limite mensal (vale para todo mês; se já existir, o
+                  valor é trocado)
                 </p>
                 <div className="flex flex-wrap gap-2">
                   <Seletor
@@ -1417,8 +1544,8 @@ export default function FinanceiroPage() {
                 Renda do mês
               </h2>
               <Lista
-                itens={rendas}
-                vazio="Nenhuma renda ainda. Comece pelo salário."
+                itens={rendasMes}
+                vazio="Nenhuma renda neste mês. Comece pelo salário."
                 onRemover={removeRenda}
                 onEditar={(i) => iniciarEdicao("renda", i)}
                 editId={idEditando("renda")}
@@ -1454,7 +1581,7 @@ export default function FinanceiroPage() {
               </h2>
               <Lista
                 itens={fixosOrdenados}
-                vazio="Nenhum gasto fixo ainda. Aluguel, internet, assinaturas..."
+                vazio="Nenhum gasto fixo neste mês. Aluguel, internet, assinaturas..."
                 onRemover={removeFixo}
                 onEditar={(i) => iniciarEdicao("fixo", i)}
                 editId={idEditando("fixo")}
@@ -1491,10 +1618,11 @@ export default function FinanceiroPage() {
                   Adicionar
                 </button>
               </div>
-              {fixos.length > 0 && (
+              {fixosMes.length > 0 && (
                 <p className="mt-2 text-xs text-mute">
-                  Marque a bolinha quando pagar a conta deste mês. Ela some do
-                  aviso da tela Hoje e volta desmarcada no mês seguinte.
+                  Marque a bolinha quando pagar a conta do mês. No mês atual ela
+                  some do aviso da tela Hoje, e cada mês tem as suas próprias
+                  marcações.
                 </p>
               )}
             </div>
@@ -1648,10 +1776,10 @@ export default function FinanceiroPage() {
                 </button>
               </div>
               <p className="mt-2 text-xs text-mute">
-                Total = quantas parcelas tem a compra. Atual = qual parcela você
-                está pagando neste mês (deixe vazio se for a primeira). Marque a
-                bolinha quando pagar a parcela deste mês: ela sai do "restam" e
-                do "falta quitar", e volta desmarcada no mês seguinte.
+                Total = quantas parcelas tem a compra. Atual = qual parcela cai
+                no mês que você está vendo (deixe vazio se for a primeira).
+                Marque a bolinha quando pagar a parcela do mês: ela sai do
+                "restam" e do "falta quitar" daquele mês em diante.
               </p>
             </div>
 
