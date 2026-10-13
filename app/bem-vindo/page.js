@@ -6,7 +6,12 @@ import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/components/AuthProvider";
 import { useModulos } from "@/components/ModulosProvider";
 import { MODULOS, TODOS } from "@/lib/modulos";
-import { SUGESTOES, FREQUENCIAS } from "@/lib/sugestoes";
+import {
+  SUGESTOES,
+  FREQUENCIAS,
+  DIAS_SEMANA,
+  diasDaFrequencia,
+} from "@/lib/sugestoes";
 
 // Só as áreas escolhidas, que já estão prontas e que têm perguntas
 function areasComPerguntas(escolhidos) {
@@ -25,6 +30,7 @@ export default function BemVindoPage() {
     MODULOS.filter((m) => m.padrao).map((m) => m.key)
   );
   const [respostas, setRespostas] = useState({});
+  const [diasUma, setDiasUma] = useState({});
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
 
@@ -64,6 +70,10 @@ export default function BemVindoPage() {
     setRespostas((prev) => ({ ...prev, [id]: freq }));
   }
 
+  function escolherDia(id, dia) {
+    setDiasUma((prev) => ({ ...prev, [id]: dia }));
+  }
+
   // Passo 2: cria só os hábitos marcados, sem duplicar nomes que já existem
   async function criarEEntrar() {
     setErro("");
@@ -73,7 +83,8 @@ export default function BemVindoPage() {
       a.perguntas.forEach((p) => {
         const freq = respostas[p.id] || "nao";
         if (freq !== "nao") {
-          marcados.push({ nome: p.habito, dias: FREQUENCIAS[freq].dias });
+          const dia = diasUma[p.id] ?? p.diaPadrao;
+          marcados.push({ nome: p.habito, dias: diasDaFrequencia(freq, dia) });
         }
       });
     });
@@ -150,6 +161,7 @@ export default function BemVindoPage() {
                 <div className="flex flex-col gap-3">
                   {a.perguntas.map((p) => {
                     const atual = respostas[p.id] || "nao";
+                    const diaAtual = diasUma[p.id] ?? p.diaPadrao ?? 0;
                     return (
                       <div
                         key={p.id}
@@ -178,6 +190,36 @@ export default function BemVindoPage() {
                             </button>
                           ))}
                         </div>
+
+                        {atual === "uma" && (
+                          <div className="mt-4 pt-4 border-t border-line">
+                            <p className="text-xs text-mute mb-2">
+                              Em qual dia da semana?
+                            </p>
+                            <div
+                              className="flex flex-wrap gap-2"
+                              role="radiogroup"
+                              aria-label="Dia da semana"
+                            >
+                              {DIAS_SEMANA.map((nome, i) => (
+                                <button
+                                  key={nome}
+                                  type="button"
+                                  role="radio"
+                                  aria-checked={diaAtual === i}
+                                  onClick={() => escolherDia(p.id, i)}
+                                  className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${
+                                    diaAtual === i
+                                      ? "border-ember text-ember bg-ember/10"
+                                      : "border-line text-mute hover:text-bone"
+                                  }`}
+                                >
+                                  {nome}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
