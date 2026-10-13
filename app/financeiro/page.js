@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/components/AuthProvider";
 import Nav from "@/components/Nav";
+import HistoricoMensal from "@/components/HistoricoMensal";
 
 const CATEGORIAS = [
   "Mercado",
@@ -1987,6 +1988,19 @@ export default function FinanceiroPage() {
               </div>
             </div>
           </div>
+        </div>
+                <div className="mt-4">
+          <HistoricoMensal
+            userId={user.id}
+            mesSel={mesSel}
+            pronto={carregado && !erro}
+            renda={totalRenda}
+            fixos={totalFixos}
+            parcelas={totalParcelasMes}
+            variaveis={totalVariaveis}
+            guardado={guardadoNoMes}
+            onEscolherMes={mudarMes}
+          />
         </div>
       </main>
     </div>
