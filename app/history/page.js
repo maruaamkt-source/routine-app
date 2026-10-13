@@ -6,39 +6,44 @@ import { useAuth } from "@/components/AuthProvider";
 import Nav from "@/components/Nav";
 import ProgressRing from "@/components/ProgressRing";
 import HabitHeatmap from "@/components/HabitHeatmap";
-import { toISODate, habitAppliesOnISO } from "@/lib/dateUtils";
+import { habitAppliesOnISO } from "@/lib/dateUtils";
 
 const WEEKS_BACK = 8;
 const MONTHS_BACK = 6;
 
-function mondayOf(date) {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diffToMonday = day === 0 ? -6 : 1 - day;
-  d.setDate(d.getDate() + diffToMonday);
-  d.setHours(0, 0, 0, 0);
-  return d;
+function pad(n) {
+  return String(n).padStart(2, "0");
+}
+
+// Data local -> "AAAA-MM-DD", sem passar por UTC (evita erro de fuso)
+function localISO(date) {
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function formatDM(date) {
+  return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}`;
 }
 
 function buildWeekPeriods(today) {
-  const thisMonday = mondayOf(today);
+  // Segunda-feira da semana atual, calculada só com ano/mês/dia
+  const dow = (today.getDay() + 6) % 7; // segunda = 0
+  const y = today.getFullYear();
+  const m = today.getMonth();
+  const mondayDay = today.getDate() - dow;
+
   const periods = [];
+  const seen = new Set();
   for (let i = 0; i < WEEKS_BACK; i++) {
-    const start = new Date(thisMonday);
-    start.setDate(start.getDate() - 7 * i);
-    const end = new Date(start);
-    end.setDate(end.getDate() + 6);
+    const start = new Date(y, m, mondayDay - 7 * i);
+    const end = new Date(y, m, mondayDay - 7 * i + 6);
+    const key = localISO(start);
+    if (seen.has(key)) continue; // segurança: nunca repete a mesma semana
+    seen.add(key);
     periods.push({
-      key: toISODate(start),
+      key,
       start,
       end,
-      label: `${start.getDate().toString().padStart(2, "0")}/${(start.getMonth() + 1)
-        .toString()
-        .padStart(2, "0")} - ${end.getDate().toString().padStart(2, "0")}/${(
-        end.getMonth() + 1
-      )
-        .toString()
-        .padStart(2, "0")}`,
+      label: `${formatDM(start)} - ${formatDM(end)}`,
       isCurrent: i === 0,
     });
   }
@@ -52,12 +57,10 @@ function buildMonthPeriods(today) {
     const start = new Date(ref.getFullYear(), ref.getMonth(), 1);
     const end = new Date(ref.getFullYear(), ref.getMonth() + 1, 0);
     periods.push({
-      key: toISODate(start),
+      key: localISO(start),
       start,
       end,
-      label: ref
-        .toLocaleDateString("pt-BR", { month: "long", year: "numeric" })
-        .replace(/^\w/, (c) => c.toUpperCase()),
+      label: ref.toLocaleDateString("pt-BR", { month: "long", year: "numeric" }),
       isCurrent: i === 0,
     });
   }
@@ -67,11 +70,13 @@ function buildMonthPeriods(today) {
 // Lista todas as datas (Date objects) dentro do período, limitadas até hoje
 function datesElapsedInPeriod(start, end, today) {
   const dates = [];
-  const cursor = new Date(start);
   const limit = end < today ? end : today;
+  let day = start.getDate();
+  let cursor = new Date(start.getFullYear(), start.getMonth(), day);
   while (cursor <= limit) {
-    dates.push(new Date(cursor));
-    cursor.setDate(cursor.getDate() + 1);
+    dates.push(cursor);
+    day += 1;
+    cursor = new Date(start.getFullYear(), start.getMonth(), day);
   }
   return dates;
 }
@@ -86,13 +91,12 @@ export default function HistoryPage() {
 
   const today = useMemo(() => {
     const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    return d;
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
   }, []);
 
   const earliestNeeded = useMemo(() => {
     const d = new Date(today.getFullYear(), today.getMonth() - MONTHS_BACK, 1);
-    return toISODate(d);
+    return localISO(d);
   }, [today]);
 
   const loadData = useCallback(async () => {
@@ -127,8 +131,8 @@ export default function HistoryPage() {
 
   const stats = useMemo(() => {
     return periods.map((p) => {
-      const startISO = toISODate(p.start);
-      const endISO = toISODate(p.end);
+      const startISO = localISO(p.start);
+      const endISO = localISO(p.end);
 
       const periodTasks = tasks.filter(
         (t) => t.due_date >= startISO && t.due_date <= endISO
@@ -145,7 +149,7 @@ export default function HistoryPage() {
       const elapsedDates = datesElapsedInPeriod(p.start, p.end, today);
       let habitsPossible = 0;
       elapsedDates.forEach((date) => {
-        const iso = toISODate(date);
+        const iso = localISO(date);
         habits.forEach((h) => {
           if (habitAppliesOnISO(h, iso)) habitsPossible += 1;
         });
@@ -217,7 +221,9 @@ export default function HistoryPage() {
                 }`}
               >
                 <div className="flex items-center justify-between mb-4">
-                  <p className="text-sm text-bone capitalize">{s.label}</p>
+                  <p className="text-sm text-bone first-letter:uppercase">
+                    {s.label}
+                  </p>
                   {s.isCurrent && (
                     <span className="text-[10px] text-ember border border-ember/40 rounded-full px-2 py-0.5">
                       Atual

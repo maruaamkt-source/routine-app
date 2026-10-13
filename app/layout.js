@@ -14,6 +14,7 @@ import {
 } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/components/AuthProvider";
+import { ModulosProvider } from "@/components/ModulosProvider";
 
 // Fontes originais do app (título da Nav usa essas)
 const fraunces = Fraunces({
@@ -227,7 +228,9 @@ export default function RootLayout({ children }) {
         <div className="ambient-bg" />
         <div className="grain" />
         <div className="relative z-10">
-          <AuthProvider>{children}</AuthProvider>
+          <AuthProvider>
+            <ModulosProvider>{children}</ModulosProvider>
+          </AuthProvider>
         </div>
       </body>
     </html>

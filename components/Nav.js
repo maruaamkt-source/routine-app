@@ -4,16 +4,9 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "./AuthProvider";
+import { useModulos } from "./ModulosProvider";
+import { itensDoMenu } from "@/lib/modulos";
 import InstallButton from "./InstallButton";
-
-const LINKS = [
-  { href: "/", label: "Hoje", icon: "home" },
-  { href: "/calendar", label: "Agenda", icon: "agenda" },
-  { href: "/calendario", label: "Calendário", icon: "calendar" },
-  { href: "/habits", label: "Hábitos", icon: "habits" },
-  { href: "/history", label: "Histórico", icon: "history" },
-  { href: "/financeiro", label: "Financeiro", icon: "wallet" },
-];
 
 // Variáveis que o tema Personalizado aplica inline no <html>
 const CUSTOM_VARS = [
@@ -230,14 +223,18 @@ const ITEM_BASE =
 export default function Nav() {
   const pathname = usePathname();
   const { signOut } = useAuth();
+  const { modulos } = useModulos();
   const [open, setOpen] = useState(false);
+
+  // Itens do menu: "Hoje" sempre + os módulos que a pessoa escolheu
+  const links = itensDoMenu(modulos);
 
   // Fecha o menu ao trocar de página
   useEffect(() => {
     setOpen(false);
   }, [pathname]);
 
-    // Com o menu aberto: trava o scroll, esconde a marca d'água e fecha com Esc
+  // Com o menu aberto: trava o scroll, esconde a marca d'água e fecha com Esc
   useEffect(() => {
     if (!open) return;
     const prev = document.body.style.overflow;
@@ -274,7 +271,7 @@ export default function Nav() {
           </p>
 
           <nav className="flex flex-col gap-1">
-            {LINKS.map((link) => {
+            {links.map((link) => {
               const active = isActive(pathname, link.href);
               return (
                 <Link
@@ -327,7 +324,7 @@ export default function Nav() {
         <MenuIcon />
       </button>
 
-      {/* Mobile: menu lateral (z alto pra ficar acima da marca d'água da página) */}
+      {/* Mobile: menu lateral */}
       <div
         className={`md:hidden fixed inset-0 z-[100] ${
           open ? "" : "pointer-events-none"
@@ -364,7 +361,7 @@ export default function Nav() {
             </div>
 
             <nav className="flex flex-col gap-1">
-              {LINKS.map((link) => {
+              {links.map((link) => {
                 const active = isActive(pathname, link.href);
                 return (
                   <Link
