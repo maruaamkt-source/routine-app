@@ -209,8 +209,8 @@ export default function CalendarioPage() {
 
         <div className="grid lg:grid-cols-[1fr_280px] gap-4">
           <div className="rounded-lg border border-line bg-panel overflow-hidden min-w-0">
-            {/* Barra de topo */}
-            <div className="flex items-center gap-2 px-3 md:px-4 py-3 border-b border-line">
+            {/* Barra de topo: no celular o título ocupa uma linha só dele; no desktop fica tudo na mesma linha */}
+            <div className="flex flex-wrap items-center gap-2 px-3 md:px-4 py-3 border-b border-line">
               <button
                 onClick={() => move(-1)}
                 aria-label="Anterior"
@@ -225,12 +225,12 @@ export default function CalendarioPage() {
               >
                 ›
               </button>
-              <p className="flex-1 min-w-0 truncate text-sm md:text-base text-bone first-letter:uppercase">
+              <p className="order-first w-full md:order-none md:w-auto md:flex-1 min-w-0 text-base text-bone first-letter:uppercase">
                 {title}
               </p>
               <div
                 role="tablist"
-                className="flex rounded-md border border-line p-0.5 shrink-0"
+                className="flex rounded-md border border-line p-0.5 shrink-0 ml-auto"
               >
                 {[
                   ["mes", "Mês"],

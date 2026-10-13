@@ -14,9 +14,8 @@ import {
 } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/components/AuthProvider";
-import Watermark from "@/components/Watermark";
 
-// Fontes originais do app (marca d'água e título da Nav usam essas)
+// Fontes originais do app (título da Nav usa essas)
 const fraunces = Fraunces({
   subsets: ["latin"],
   weight: ["400", "500", "600"],
@@ -229,9 +228,6 @@ export default function RootLayout({ children }) {
         <div className="grain" />
         <div className="relative z-10">
           <AuthProvider>{children}</AuthProvider>
-        </div>
-                <div className="watermark-wrap">
-          <Watermark />
         </div>
       </body>
     </html>

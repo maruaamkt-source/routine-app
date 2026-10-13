@@ -193,7 +193,7 @@ export default function HabitsPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="min-w-0 md:col-span-2 rounded-lg border border-line bg-panel p-5">
             <div className="flex items-center justify-between mb-3">
-              <p className="text-lg text-bone capitalize">{dateLabel}</p>
+              <p className="text-lg text-bone first-letter:uppercase">{dateLabel}</p>
               <span className="text-xs text-mute border border-line rounded-full px-2 py-0.5">
                 {habitsDoneToday}/{habitsAppliedToday.length || 0}
               </span>
@@ -220,7 +220,7 @@ export default function HabitsPage() {
                       appliesToday={appliesToday}
                       onToggleToday={handleToggleToday}
                       onDelete={handleDeleteHabit}
-                       onUpdate={handleUpdateHabit}
+                      onUpdate={handleUpdateHabit}
                     />
                   );
                 })}

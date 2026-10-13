@@ -225,7 +225,7 @@ export default function CalendarPage() {
           {/* Painel principal: dia selecionado */}
           <div className="min-w-0 md:col-span-2 rounded-lg border border-line bg-panel p-5">
             <div className="flex items-center justify-between mb-4">
-              <p className="text-lg text-bone capitalize">{selectedLabel}</p>
+              <p className="text-lg text-bone first-letter:uppercase">{selectedLabel}</p>
               {isSelectedToday && (
                 <span className="text-xs text-ember border border-ember/40 rounded-full px-2 py-0.5">
                   Hoje

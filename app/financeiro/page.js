@@ -1537,6 +1537,13 @@ export default function FinanceiroPage() {
                 </div>
               </div>
             </div>
+             <GastosPorCategoria          
+              userId={user.id}
+              mesSel={mesSel}
+              pronto={carregado && !erro}
+              atualizar={totalVariaveis}
+              onEscolherMes={mudarMes}
+            />
           </div>
 
           {/* Entradas, fixos, parcelas, variáveis e metas */}
@@ -2000,15 +2007,6 @@ export default function FinanceiroPage() {
             parcelas={totalParcelasMes}
             variaveis={totalVariaveis}
             guardado={guardadoNoMes}
-            onEscolherMes={mudarMes}
-          />
-        </div>
-                <div className="mt-4">
-          <GastosPorCategoria
-            userId={user.id}
-            mesSel={mesSel}
-            pronto={carregado && !erro}
-            atualizar={totalVariaveis}
             onEscolherMes={mudarMes}
           />
         </div>

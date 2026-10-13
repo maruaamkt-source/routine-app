@@ -264,8 +264,3 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 :root[data-glow="off"] .ambient-bg {
   display: none;
 }
-
-/* Esconde a marca d'água quando o menu lateral do celular está aberto */
-:root[data-menu="open"] .watermark-wrap {
-  display: none;
-}
