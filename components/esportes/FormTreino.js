@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { todayISO } from "@/lib/dateUtils";
+import { checarRecordes } from "@/lib/recordesUtils";
+import { GRUPOS } from "@/lib/gruposMusculares";
 import {
   TIPOS,
   temExercicios,
@@ -20,9 +22,11 @@ export default function FormTreino({
   user,
   treinos,
   nomes,
+  grupos = {},
   onSalvo,
   onCancelar,
   editando = null,
+  modelo = null, // { plano, dia }
 }) {
   const contador = useRef(1);
   function proximoId() {
@@ -30,22 +34,50 @@ export default function FormTreino({
     return contador.current;
   }
   function linhaVazia() {
-    return { id: proximoId(), nome: "", series: "3", reps: "10", carga: "", ultima: "" };
+    return { id: proximoId(), nome: "", grupo: "", series: "3", reps: "10", carga: "", ultima: "" };
   }
 
   const modoEdicao = !!editando;
 
-  const [dia, setDia] = useState(editando ? editando.day : todayISO());
-  const [tipo, setTipo] = useState(editando ? editando.type : "Musculação");
-  const [nome, setNome] = useState(editando && editando.name ? editando.name : "");
-  const [minutos, setMinutos] = useState(editando ? String(editando.minutes) : "");
-  const [km, setKm] = useState(
-    editando && editando.km ? String(editando.km).replace(".", ",") : ""
-  );
-  const [nota, setNota] = useState(editando && editando.note ? editando.note : "");
-  const [exercicios, setExercicios] = useState([
-    { id: 1, nome: "", series: "3", reps: "10", carga: "", ultima: "" },
-  ]);
+const plano = modelo ? modelo.plano : null;
+
+const [dia, setDia] = useState(
+  editando ? editando.day : modelo ? modelo.dia : todayISO()
+);
+const [tipo, setTipo] = useState(
+  editando ? editando.type : plano ? plano.type : "Musculação"
+);
+const [nome, setNome] = useState(
+  editando ? editando.name || "" : plano ? plano.name : ""
+);
+const [minutos, setMinutos] = useState(
+  editando ? String(editando.minutes) : plano ? String(plano.minutes) : ""
+);
+const [km, setKm] = useState(
+  editando && editando.km
+    ? String(editando.km).replace(".", ",")
+    : plano && plano.km
+    ? String(plano.km).replace(".", ",")
+    : ""
+);
+const [nota, setNota] = useState(
+  editando ? editando.note || "" : plano ? plano.note || "" : ""
+);
+const [exercicios, setExercicios] = useState(() => {
+  if (plano && plano.exercises && plano.exercises.length > 0) {
+    return plano.exercises.map((e) => ({
+      id: proximoId(),
+      nome: e.name,
+      nome: e.name,
+grupo: e.muscle_group || "",
+      series: String(e.sets),
+      reps: String(e.reps),
+      carga: Number(e.weight_kg) > 0 ? String(e.weight_kg).replace(".", ",") : "",
+      ultima: "",
+    }));
+  }
+  return [{ id: 1, nome: "", grupo: "", series: "3", reps: "10", carga: "", ultima: "" }];
+});
   const [antigosIds, setAntigosIds] = useState([]);
   const [carregandoEx, setCarregandoEx] = useState(
     !!editando && temExercicios(editando.type)
@@ -61,7 +93,7 @@ export default function FormTreino({
     async function buscar() {
       const { data, error } = await supabase
         .from("workout_exercises")
-        .select("id, name, sets, reps, weight_kg, position")
+        .select("id, name, sets, reps, weight_kg, position, muscle_group")
         .eq("workout_id", editando.id)
         .eq("user_id", user.id)
         .order("position");
@@ -79,6 +111,8 @@ export default function FormTreino({
           lista.map((e) => ({
             id: proximoId(),
             nome: e.name,
+            nome: e.name,
+grupo: e.muscle_group || "",
             series: String(e.sets),
             reps: String(e.reps),
             carga: Number(e.weight_kg) > 0 ? String(e.weight_kg).replace(".", ",") : "",
@@ -122,6 +156,13 @@ export default function FormTreino({
     }
     if (canonico !== digitado) atualizar(id, { nome: canonico });
 
+    const g = grupos[canonico];
+    if (g) {
+      setExercicios((prev) =>
+        prev.map((e) => (e.id === id && !e.grupo ? { ...e, grupo: g } : e))
+      );
+    }
+
     const { data, error } = await supabase
       .from("workout_exercises")
       .select("sets, reps, weight_kg, created_at")
@@ -144,7 +185,7 @@ export default function FormTreino({
     }
     const { data, error } = await supabase
       .from("workout_exercises")
-      .select("name, sets, reps, weight_kg, position")
+      .select("name, sets, reps, weight_kg, position, muscle_group")
       .eq("workout_id", anterior.id)
       .eq("user_id", user.id)
       .order("position");
@@ -161,6 +202,8 @@ export default function FormTreino({
       data.map((e) => ({
         id: proximoId(),
         nome: e.name,
+        nome: e.name,
+grupo: e.muscle_group || "",
         series: String(e.sets),
         reps: String(e.reps),
         carga: Number(e.weight_kg) > 0 ? String(e.weight_kg).replace(".", ",") : "",
@@ -207,6 +250,7 @@ export default function FormTreino({
           sets: s,
           reps: r,
           weight_kg: c,
+          muscle_group: ex.grupo || null,
           position: lista.length,
         });
       }
@@ -222,6 +266,8 @@ export default function FormTreino({
 
     setSalvando(true);
 
+    const prs = await checarRecordes(user.id, lista);
+
     const { data: treino, error: erroTreino } = await supabase
       .from("workouts")
       .insert({
@@ -231,6 +277,7 @@ export default function FormTreino({
         name: nome.trim() || null,
         minutes: min,
         km: kmNum,
+        plan_id: plano ? plano.id : null,
         note: nota.trim() || null,
       })
       .select()
@@ -263,7 +310,7 @@ export default function FormTreino({
     }
 
     setSalvando(false);
-    onSalvo(treino, inseridos);
+    onSalvo(treino, inseridos, prs);
   }
 
   async function salvarEdicao() {
@@ -466,6 +513,18 @@ export default function FormTreino({
                       </button>
                     </div>
                     {ex.ultima && <p className="mt-1.5 text-xs text-ember">{ex.ultima}</p>}
+                    <select
+                      value={ex.grupo}
+                      onChange={(e) => atualizar(ex.id, { grupo: e.target.value })}
+                      className={INPUT + " mt-2"}
+                    >
+                      <option value="">Grupo muscular</option>
+                      {GRUPOS.map((g) => (
+                        <option key={g} value={g}>
+                          {g}
+                        </option>
+                      ))}
+                    </select>
                     <div className="mt-2 grid grid-cols-3 gap-2">
                       <div>
                         <label className={LABEL}>Séries</label>

@@ -1,4 +1,5 @@
 {
+  "deno.enable": true,
   "deno.enablePaths": [
     "supabase/functions"
   ],
@@ -22,3 +23,4 @@
     "editor.defaultFormatter": "denoland.vscode-deno"
   }
 }
+

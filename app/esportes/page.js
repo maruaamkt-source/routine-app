@@ -16,6 +16,16 @@ import {
 import Heatmap from "@/components/esportes/Heatmap";
 import FormTreino from "@/components/esportes/FormTreino";
 import Evolucao from "@/components/esportes/Evolucao";
+import PlanoSemana from "@/components/esportes/PlanoSemana";
+import CardHoje from "@/components/esportes/CardHoje";
+import LembreteTreino from "@/components/esportes/LembreteTreino";
+import FotoObjetivo from "@/components/esportes/FotoObjetivo";
+import TreinoAtivo, {
+  CHAVE_ATIVO,
+  lerAtivoSalvo,
+  limparAtivoSalvo,
+} from "@/components/esportes/TreinoAtivo";
+import { checarRecordes } from "@/lib/recordesUtils";
 
 function ordenar(lista) {
   return [...lista].sort(
@@ -91,12 +101,20 @@ export default function EsportesPage() {
 
   const [treinos, setTreinos] = useState([]);
   const [nomes, setNomes] = useState([]);
+  const [gruposPorNome, setGruposPorNome] = useState({});
   const [meta, setMeta] = useState(3);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState("");
   const [aba, setAba] = useState("treinos");
   const [mostrarForm, setMostrarForm] = useState(false);
   const [editando, setEditando] = useState(null);
+  const [modelo, setModelo] = useState(null);
+  const [planos, setPlanos] = useState([]);
+  const [registrando, setRegistrando] = useState("");
+  const [metaManual, setMetaManual] = useState(false);
+  const [lembrete, setLembrete] = useState(false);
+  const [avisoPR, setAvisoPR] = useState([]);
+  const [ativo, setAtivo] = useState(null);
   const [diaSelecionado, setDiaSelecionado] = useState("");
   const [visiveis, setVisiveis] = useState(10);
   const [abertoId, setAbertoId] = useState("");
@@ -109,10 +127,10 @@ export default function EsportesPage() {
     let cancelado = false;
 
     async function carregar() {
-      const [t, s, n] = await Promise.all([
+      const [t, s, n, pl] = await Promise.all([
         supabase
           .from("workouts")
-          .select("id, day, type, name, minutes, km, note, created_at")
+          .select("id, day, type, name, minutes, km, note, plan_id, created_at")
           .eq("user_id", userId)
           .gte("day", inicioDaJanela())
           .order("day", { ascending: false })
@@ -120,20 +138,25 @@ export default function EsportesPage() {
           .limit(1000),
         supabase
           .from("health_settings")
-          .select("workouts_per_week")
+          .select("workouts_per_week, meta_manual, lembrete_treino")
           .eq("user_id", userId)
           .maybeSingle(),
         supabase
           .from("workout_exercises")
-          .select("name")
+          .select("name, muscle_group")
           .eq("user_id", userId)
           .order("created_at", { ascending: false })
           .limit(1000),
+        supabase
+          .from("workout_plans")
+          .select("*")
+          .eq("user_id", userId)
+          .order("created_at"),
       ]);
 
       if (cancelado) return;
 
-      const primeiroErro = t.error || s.error || n.error;
+      const primeiroErro = t.error || s.error || n.error || pl.error;
       if (primeiroErro) {
         setErro(
           "Não consegui carregar o Esportes. Confira se o SQL foi rodado no Supabase. (" +
@@ -143,18 +166,32 @@ export default function EsportesPage() {
       }
 
       setTreinos(t.data || []);
+      setPlanos(pl.data || []);
+      const salvo = lerAtivoSalvo();
+      if (salvo) {
+        const plano = (pl.data || []).find((p) => p.id === salvo.planoId);
+        if (plano) setAtivo({ plano, dia: salvo.dia });
+        else limparAtivoSalvo();
+      }
       if (s.data && s.data.workouts_per_week) setMeta(s.data.workouts_per_week);
+      if (s.data) {
+        setMetaManual(!!s.data.meta_manual);
+        setLembrete(!!s.data.lembrete_treino);
+      }
 
       // nomes únicos, do exercício usado mais recentemente para o mais antigo
       const vistos = new Set();
       const lista = [];
+      const mapa = {};
       (n.data || []).forEach((r) => {
         if (!vistos.has(r.name)) {
           vistos.add(r.name);
           lista.push(r.name);
         }
+        if (r.muscle_group && !(r.name in mapa)) mapa[r.name] = r.muscle_group;
       });
       setNomes(lista);
+      setGruposPorNome(mapa);
       setCarregando(false);
     }
 
@@ -184,7 +221,9 @@ export default function EsportesPage() {
 
   const diasSemana = getWeekDates().map((d) => toISODate(d));
   const feitosSemana = diasSemana.filter((d) => porDia[d]).length;
-  const pct = Math.min(100, Math.round((feitosSemana / meta) * 100));
+  const diasPlanejados = new Set(planos.flatMap((p) => p.weekdays || [])).size;
+  const metaEfetiva = metaManual || diasPlanejados === 0 ? meta : diasPlanejados;
+  const pct = Math.min(100, Math.round((feitosSemana / metaEfetiva) * 100));
 
   const prefixoMes = hoje.slice(0, 7);
   const diasDoMesTreinados = Object.keys(porDia).filter((d) => d.startsWith(prefixoMes));
@@ -192,23 +231,52 @@ export default function EsportesPage() {
 
   const doDia = treinos.filter((t) => t.day === diaSelecionado);
 
-  async function mudarMeta(delta) {
-    const nova = Math.min(7, Math.max(1, meta + delta));
-    if (nova === meta) return;
-    const anterior = meta;
+  async function salvarMeta(nova, manual) {
+    const anterior = { meta, metaManual };
     setMeta(nova);
+    setMetaManual(manual);
     const { error } = await supabase.from("health_settings").upsert(
       {
         user_id: user.id,
         workouts_per_week: nova,
+        meta_manual: manual,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "user_id" }
     );
     if (error) {
-      setMeta(anterior);
+      setMeta(anterior.meta);
+      setMetaManual(anterior.metaManual);
       setErro("Não consegui salvar a meta: " + error.message);
     }
+  }
+
+  function mudarMeta(delta) {
+    const nova = Math.min(7, Math.max(1, metaEfetiva + delta));
+    if (nova === metaEfetiva) return;
+    salvarMeta(nova, true);
+  }
+
+  function metaAuto() {
+    salvarMeta(meta, false);
+  }
+
+  async function salvarLembrete(ligado) {
+    const { error } = await supabase.from("health_settings").upsert(
+      {
+        user_id: user.id,
+        workouts_per_week: meta,
+        meta_manual: metaManual,
+        lembrete_treino: ligado,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id" }
+    );
+    if (error) {
+      setErro("Não consegui salvar o lembrete: " + error.message);
+      return;
+    }
+    setLembrete(ligado);
   }
 
   async function buscarExercicios(t) {
@@ -252,6 +320,7 @@ export default function EsportesPage() {
     }
     setErro("");
     setMostrarForm(false);
+    setModelo(null);
     setEditando({ treino: t, exercicios });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -272,7 +341,8 @@ export default function EsportesPage() {
     if (editando && editando.treino.id === t.id) setEditando(null);
   }
 
-  function aoSalvar(treino, exerciciosInseridos) {
+  function aoSalvar(treino, exerciciosInseridos, prs = []) {
+    setAvisoPR(prs);
     setTreinos((prev) => {
       const jaExiste = prev.some((x) => x.id === treino.id);
       if (jaExiste) {
@@ -286,9 +356,162 @@ export default function EsportesPage() {
       const restantes = prev.filter((n) => !novos.includes(n));
       return [...new Set(novos), ...restantes];
     });
+    setGruposPorNome((prev) => {
+      const novo = { ...prev };
+      exerciciosInseridos.forEach((e) => {
+        if (e.muscle_group) novo[e.name] = e.muscle_group;
+      });
+      return novo;
+    });
     setDiaSelecionado(treino.day);
     setMostrarForm(false);
+    setModelo(null);
     setEditando(null);
+  }
+    async function registrarModelo(p, dia) {
+    setErro("");
+    setRegistrando(p.id + dia);
+
+    const prs = await checarRecordes(
+      user.id,
+      (p.exercises || []).map((e) => ({ name: e.name, weight_kg: e.weight_kg }))
+    );
+
+    const { data: treino, error } = await supabase
+      .from("workouts")
+      .insert({
+        user_id: user.id,
+        day: dia,
+        type: p.type,
+        name: p.name,
+        minutes: p.minutes,
+        km: p.km,
+        note: p.note,
+        plan_id: p.id,
+      })
+      .select()
+      .single();
+
+    if (error || !treino) {
+      setRegistrando("");
+      setErro(
+        "Não consegui registrar o treino: " + (error ? error.message : "erro desconhecido")
+      );
+      return;
+    }
+
+    let inseridos = [];
+    if (p.exercises && p.exercises.length > 0) {
+      const { data, error: erroEx } = await supabase
+        .from("workout_exercises")
+        .insert(
+          p.exercises.map((e, i) => ({
+            muscle_group: e.muscle_group || null,
+            user_id: user.id,
+            workout_id: treino.id,
+            name: e.name,
+            sets: e.sets,
+            reps: e.reps,
+            weight_kg: e.weight_kg,
+            position: i,
+          }))
+        )
+        .select();
+
+      if (erroEx) {
+        await supabase.from("workouts").delete().eq("id", treino.id).eq("user_id", user.id);
+        setRegistrando("");
+        setErro("Não consegui salvar os exercícios: " + erroEx.message);
+        return;
+      }
+      inseridos = data || [];
+    }
+
+    setRegistrando("");
+    aoSalvar(treino, inseridos, prs);
+  }
+    function iniciarTreino(plano, dia) {
+    setErro("");
+    setEditando(null);
+    setMostrarForm(false);
+    setModelo(null);
+    try {
+      const s = localStorage.getItem(CHAVE_ATIVO);
+      const o = s ? JSON.parse(s) : null;
+      if (o && (o.planoId !== plano.id || o.dia !== dia)) limparAtivoSalvo();
+    } catch {}
+    setAtivo({ plano, dia });
+    setAba("treinos");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function finalizarAtivo(lista, minutos) {
+    const { plano, dia } = ativo;
+    setErro("");
+    setRegistrando(plano.id + dia);
+
+    const prs = await checarRecordes(user.id, lista);
+
+    const { data: treino, error } = await supabase
+      .from("workouts")
+      .insert({
+        user_id: user.id,
+        day: dia,
+        type: plano.type,
+        name: plano.name,
+        minutes: minutos,
+        km: plano.km,
+        note: plano.note,
+        plan_id: plano.id,
+      })
+      .select()
+      .single();
+
+    if (error || !treino) {
+      setRegistrando("");
+      setErro(
+        "Não consegui salvar o treino: " + (error ? error.message : "erro desconhecido")
+      );
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
+    const { data, error: erroEx } = await supabase
+      .from("workout_exercises")
+      .insert(
+        lista.map((e, i) => ({
+          muscle_group: e.muscle_group || null,
+          user_id: user.id,
+          workout_id: treino.id,
+          name: e.name,
+          sets: e.sets,
+          reps: e.reps,
+          weight_kg: e.weight_kg,
+          position: i,
+        }))
+      )
+      .select();
+
+    if (erroEx) {
+      await supabase.from("workouts").delete().eq("id", treino.id).eq("user_id", user.id);
+      setRegistrando("");
+      setErro("Não consegui salvar os exercícios: " + erroEx.message);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
+    setRegistrando("");
+    limparAtivoSalvo();
+    setAtivo(null);
+    aoSalvar(treino, data || [], prs);
+  }
+  function ajustarModelo(plano, dia) {
+    setErro("");
+    setEditando(null);
+    setModelo({ plano, dia });
+    setMostrarForm(true);
+    setAba("treinos");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function escolherDia(iso) {
@@ -310,9 +533,35 @@ export default function EsportesPage() {
             </div>
           )}
 
+          {avisoPR.length > 0 && (
+            <div className="mb-5 rounded-lg border border-ember bg-panel p-4 text-sm text-bone">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="mb-1 text-xs uppercase tracking-wide text-ember">
+                    Novo recorde 🎉
+                  </p>
+                  {avisoPR.map((p) => (
+                    <p key={p.name}>
+                      {p.name}: {formatarNumero(p.weight_kg)} kg
+                    </p>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAvisoPR([])}
+                  aria-label="Fechar aviso"
+                  className="text-mute hover:text-bone"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="mb-6 flex gap-2 border-b border-line">
             {[
               { id: "treinos", label: "Treinos" },
+              { id: "plano", label: "Plano" },
               { id: "evolucao", label: "Evolução" },
             ].map((a) => (
               <button
@@ -334,8 +583,42 @@ export default function EsportesPage() {
             <p className="text-sm text-mute">Carregando...</p>
           ) : aba === "evolucao" ? (
             <Evolucao user={user} nomes={nomes} />
+          ) : aba === "plano" ? (
+            <PlanoSemana
+              user={user}
+              treinos={treinos}
+              planos={planos}
+              setPlanos={setPlanos}
+              grupos={gruposPorNome}
+              registrar={registrarModelo}
+              registrando={registrando}
+              onAjustar={ajustarModelo}
+              onIniciar={iniciarTreino}
+              onErro={setErro}
+            />
           ) : (
             <div className="space-y-5">
+              {ativo ? (
+                <TreinoAtivo
+                  key={ativo.plano.id + ativo.dia}
+                  plano={ativo.plano}
+                  dia={ativo.dia}
+                  salvando={registrando === ativo.plano.id + ativo.dia}
+                  onFinalizar={finalizarAtivo}
+                  onCancelar={() => setAtivo(null)}
+                />
+              ) : (
+                <CardHoje
+                  planos={planos}
+                  treinos={treinos}
+                  hoje={hoje}
+                  registrando={registrando}
+                  onRegistrar={registrarModelo}
+                  onAjustar={ajustarModelo}
+                  onIniciar={iniciarTreino}
+                />
+              )}
+
               {/* Meta da semana */}
               <div className="rounded-lg border border-line bg-panel p-5">
                 <div className="mb-3 flex items-start justify-between gap-3">
@@ -349,7 +632,7 @@ export default function EsportesPage() {
                     >
                       −
                     </button>
-                    <span className="text-bone">{meta}x</span>
+                    <span className="text-bone">{metaEfetiva}x</span>
                     <button
                       type="button"
                       onClick={() => mudarMeta(1)}
@@ -361,20 +644,42 @@ export default function EsportesPage() {
                   </div>
                 </div>
                 <p className="mb-2 font-serif text-2xl text-bone">
-                  {feitosSemana} de {meta} esta semana
+                  {feitosSemana} de {metaEfetiva} esta semana
                 </p>
                 <div className="h-2 overflow-hidden rounded-full bg-line">
                   <div className="h-full rounded-full bg-ember" style={{ width: `${pct}%` }} />
                 </div>
-                {feitosSemana >= meta && (
+                {feitosSemana >= metaEfetiva && (
                   <p className="mt-2 text-xs text-ember">Meta da semana batida!</p>
                 )}
-                <p className="mt-3 text-xs text-mute">
+                {diasPlanejados > 0 && (
+                  <p className="mt-3 text-xs text-mute">
+                    {metaManual ? (
+                      <>
+                        Meta manual.{" "}
+                        <button
+                          type="button"
+                          onClick={metaAuto}
+                          className="text-ember hover:underline"
+                        >
+                          Usar dias do Plano ({diasPlanejados})
+                        </button>
+                      </>
+                    ) : (
+                      "Meta automática (dias do Plano)"
+                    )}
+                  </p>
+                )}
+                <p className="mt-1 text-xs text-mute">
                   Este mês: {diasDoMesTreinados.length}{" "}
                   {diasDoMesTreinados.length === 1 ? "dia treinado" : "dias treinados"}
                   {minutosMes > 0 ? ` · ${formatarMinutos(minutosMes)}` : ""}
                 </p>
               </div>
+
+              <LembreteTreino userId={user.id} ativo={lembrete} onAlterar={salvarLembrete} />
+
+              <FotoObjetivo user={user} meta={meta} />
 
               {/* Registrar / Editar */}
               {editando ? (
@@ -383,25 +688,32 @@ export default function EsportesPage() {
                   user={user}
                   treinos={treinos}
                   nomes={nomes}
-                  treinoEditando={editando.treino}
-                  exerciciosEditando={editando.exercicios}
+                  grupos={gruposPorNome}
+                  editando={editando.treino}
                   onSalvo={aoSalvar}
                   onCancelar={() => setEditando(null)}
                 />
               ) : mostrarForm ? (
                 <FormTreino
+                  key={modelo ? modelo.plano.id + modelo.dia : "novo"}
                   user={user}
                   treinos={treinos}
                   nomes={nomes}
-                  treinoEditando={null}
-                  exerciciosEditando={[]}
+                  grupos={gruposPorNome}
+                  modelo={modelo}
                   onSalvo={aoSalvar}
-                  onCancelar={() => setMostrarForm(false)}
+                  onCancelar={() => {
+                    setMostrarForm(false);
+                    setModelo(null);
+                  }}
                 />
               ) : (
                 <button
                   type="button"
-                  onClick={() => setMostrarForm(true)}
+                  onClick={() => {
+                    setModelo(null);
+                    setMostrarForm(true);
+                  }}
                   className="rounded-lg bg-ember px-5 py-2.5 text-sm font-medium text-ink"
                 >
                   + Registrar treino
@@ -418,6 +730,7 @@ export default function EsportesPage() {
                   hoje={hoje}
                   selecionado={diaSelecionado}
                   onSelecionar={escolherDia}
+                  planos={planos}
                 />
                 <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-mute">
                   <span className="flex items-center gap-1.5">
@@ -425,6 +738,12 @@ export default function EsportesPage() {
                   </span>
                   <span className="flex items-center gap-1.5">
                     <span className="h-3 w-3 rounded-[3px] bg-ember" /> 2x no dia ou mais de 60 min
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-3 w-3 rounded-[3px] ring-1 ring-ember/60" /> Planejado
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-3 w-3 rounded-[3px] border border-dashed border-mute" /> Faltou
                   </span>
                 </div>
 

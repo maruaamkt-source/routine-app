@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/components/AuthProvider";
 import Link from "next/link";
 import Nav from "@/components/Nav";
+import { useModulos } from "@/components/ModulosProvider";
 import TaskList from "@/components/TaskList";
 import TaskForm from "@/components/TaskForm";
 import ProgressRing from "@/components/ProgressRing";
@@ -20,6 +21,12 @@ import {
 import { scheduleTaskReminders } from "@/lib/notifications";
 import { renewSeries } from "@/lib/taskSeries";
 import { getQuoteForDate, getRandomQuote } from "@/lib/quotes";
+import CardEsportes from "@/components/hoje/CardEsportes";
+import CardEstudos from "@/components/hoje/CardEstudos";
+import CardSaude from "@/components/hoje/CardSaude";
+import CardFinanceiro from "@/components/hoje/CardFinanceiro";
+import CardRotina from "@/components/hoje/CardRotina";
+import CardEspiritual from "@/components/hoje/CardEspiritual";
 
 function greeting() {
   const hour = new Date().getHours();
@@ -65,11 +72,13 @@ function proximoVencimento(diaVenc, agora) {
 
 export default function TodayPage() {
   const { user, loading } = useAuth();
+  const { modulos } = useModulos();
   const [tasks, setTasks] = useState([]);
   const [weekTasks, setWeekTasks] = useState([]);
   const [habits, setHabits] = useState([]);
   const [logsByHabit, setLogsByHabit] = useState({});
   const [fixos, setFixos] = useState([]);
+  const [histFixos, setHistFixos] = useState([]);
   const [pagos, setPagos] = useState([]); // chaves "idDoFixo|AAAA-MM-01"
   const [pagando, setPagando] = useState(null); // chave do item sendo gravado
   const [erroVenc, setErroVenc] = useState("");
@@ -94,10 +103,18 @@ export default function TodayPage() {
       .filter((f) => f.due_day)
       .map((f) => {
         const { dias, refMonth } = proximoVencimento(f.due_day, agora);
+        const hs = histFixos
+          .filter(
+            (h) => h.fixed_expense_id === f.id && h.effective_from <= refMonth
+          )
+          .sort((a, b) => a.effective_from.localeCompare(b.effective_from));
+        const valor = hs.length
+          ? Number(hs[hs.length - 1].amount)
+          : Number(f.amount);
         return {
           id: f.id,
           nome: f.name,
-          valor: Number(f.amount),
+          valor,
           dias,
           refMonth,
           chave: `${f.id}|${refMonth}`,
@@ -105,7 +122,7 @@ export default function TodayPage() {
       })
       .filter((f) => f.dias <= 3 && !pagos.includes(f.chave))
       .sort((a, b) => a.dias - b.dias);
-  }, [fixos, pagos, today]);
+  }, [fixos, histFixos, pagos, today]);
 
   const loadData = useCallback(async () => {
     if (!user) return;
@@ -117,7 +134,7 @@ export default function TodayPage() {
       new Date(agora.getFullYear(), agora.getMonth() + 1, 1)
     );
 
-    const [todayRes, weekRes, habitsRes, logsRes, fixedRes, payRes] =
+    const [todayRes, weekRes, habitsRes, logsRes, fixedRes, payRes, histRes] =
       await Promise.all([
         supabase
           .from("tasks")
@@ -147,12 +164,17 @@ export default function TodayPage() {
           .select("fixed_expense_id, ref_month")
           .eq("user_id", user.id)
           .in("ref_month", [mesAtual, mesSeguinte]),
+        supabase
+          .from("fixed_expense_history")
+          .select("fixed_expense_id, amount, effective_from")
+          .eq("user_id", user.id),
       ]);
 
     if (!todayRes.error) setTasks(todayRes.data ?? []);
     if (!weekRes.error) setWeekTasks(weekRes.data ?? []);
     if (!habitsRes.error) setHabits(habitsRes.data ?? []);
     if (!fixedRes.error) setFixos(fixedRes.data ?? []);
+    if (!histRes.error) setHistFixos(histRes.data ?? []);
     if (!payRes.error) {
       setPagos(
         (payRes.data ?? []).map((p) => `${p.fixed_expense_id}|${p.ref_month}`)
@@ -370,7 +392,7 @@ export default function TodayPage() {
           <TaskForm defaultDate={today} onCreate={handleCreate} />
         </div>
 
-        {(vencimentos.length > 0 || erroVenc) && (
+        {modulos.includes("financeiro") && (vencimentos.length > 0 || erroVenc) && (
           <div className="mb-6 rounded-lg border-l-2 border-ember bg-panel p-4">
             <div className="mb-2 flex items-center justify-between">
               <h2 className="text-xs tracking-wide text-mute uppercase">
@@ -416,6 +438,31 @@ export default function TodayPage() {
                 </li>
               ))}
             </ul>
+          </div>
+        )}
+
+        {["rotina", "espiritual", "esportes", "estudos", "saude", "financeiro"].some(
+          (k) => modulos.includes(k)
+        ) && (
+          <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+            {modulos.includes("rotina") && (
+              <CardRotina
+                carregando={fetching}
+                tarefasFeitas={doneCount}
+                tarefasTotal={tasks.length}
+                habitosFeitos={
+                  habitsToday.filter((h) =>
+                    (logsByHabit[h.id] ?? []).some((l) => l.date === today)
+                  ).length
+                }
+                habitosTotal={habitsToday.length}
+              />
+            )}
+            {modulos.includes("espiritual") && <CardEspiritual userId={user.id} />}
+            {modulos.includes("esportes") && <CardEsportes userId={user.id} />}
+            {modulos.includes("estudos") && <CardEstudos userId={user.id} />}
+            {modulos.includes("saude") && <CardSaude userId={user.id} />}
+            {modulos.includes("financeiro") && <CardFinanceiro userId={user.id} />}
           </div>
         )}
 

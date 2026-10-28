@@ -158,6 +158,19 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Lembrete de treino (a função decide pelo horário de cada modelo)
+    {
+      try {
+        const r = await fetch(`${SUPABASE_URL}/functions/v1/avisar-treino`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+        });
+        if (!r.ok) console.error("[send-push] avisar-treino status", r.status);
+      } catch (e) {
+        console.error("[send-push] erro ao chamar avisar-treino:", e);
+      }
+    }
+
     return new Response(JSON.stringify({ sent: sentCount }), { status: 200 });
   } catch (err) {
     console.error(err);

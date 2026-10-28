@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { formatarNumero, resumoExercicio } from "@/lib/esportesUtils";
+import VolumeSemana from "@/components/esportes/VolumeSemana";
 
 const W = 320;
 const H = 170;
@@ -179,6 +180,7 @@ export default function Evolucao({ user, nomes }) {
 
   return (
     <div className="space-y-5">
+      <VolumeSemana user={user} />
       <div className="rounded-lg border border-line bg-panel p-5">
         <label className="mb-1 block text-xs uppercase tracking-wide text-mute">Exercício</label>
         <select

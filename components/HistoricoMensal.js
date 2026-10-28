@@ -59,15 +59,18 @@ function nomeCurto(iso) {
 
 // banco -> tela
 const fromClosing = (r) => ({
+    guardado: Number(r.saved_total),
+  dizimo: Number(r.tithe_total ?? 0),
   mes: r.ref_month, // "YYYY-MM-01"
   renda: Number(r.income),
   fixos: Number(r.fixed_total),
   parcelas: Number(r.installments_total),
   variaveis: Number(r.variable_total),
   guardado: Number(r.saved_total),
+  dizimo: Number(r.tithe_total ?? 0),
 });
 
-const CAMPOS = ["renda", "fixos", "parcelas", "variaveis", "guardado"];
+const CAMPOS = ["renda", "fixos", "parcelas", "variaveis", "guardado", "dizimo"];
 
 // Card "Histórico mensal": últimos 12 meses de entrou / gastou / guardou.
 // - Mês atual: é salvo sozinho conforme os números mudam.
@@ -83,6 +86,7 @@ export default function HistoricoMensal({
   parcelas,
   variaveis,
   guardado,
+  dizimo,
   onEscolherMes,
 }) {
   const [linhas, setLinhas] = useState([]);
@@ -132,8 +136,9 @@ export default function HistoricoMensal({
       parcelas: r2(parcelas),
       variaveis: r2(variaveis),
       guardado: r2(guardado),
+      dizimo: r2(dizimo),
     }),
-    [renda, fixos, parcelas, variaveis, guardado]
+    [renda, fixos, parcelas, variaveis, guardado, dizimo]
   );
 
   const linhaDoMes = linhas.find((l) => l.mes === mesSel) || null;
@@ -156,6 +161,7 @@ export default function HistoricoMensal({
             installments_total: valores.parcelas,
             variable_total: valores.variaveis,
             saved_total: valores.guardado,
+            tithe_total: valores.dizimo,
             updated_at: new Date().toISOString(),
           },
           { onConflict: "user_id,ref_month" }
@@ -209,7 +215,7 @@ export default function HistoricoMensal({
     return Array.from({ length: 12 }, (_, i) => {
       const mes = somarMes(inicio, i);
       const l = mapa[mes] || null;
-      const gasto = l ? l.fixos + l.parcelas + l.variaveis : 0;
+      const gasto = l ? l.fixos + l.parcelas + l.variaveis + l.dizimo : 0;
       const sobra = l ? l.renda - gasto - l.guardado : 0;
       return { mes, l, gasto, sobra };
     });

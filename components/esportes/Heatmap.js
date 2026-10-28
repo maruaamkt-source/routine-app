@@ -1,5 +1,6 @@
 "use client";
 
+import { planosDoDia } from "@/lib/planosUtils";
 import {
   diasDoMes,
   primeiroDiaDaSemana,
@@ -10,7 +11,7 @@ import {
 const LETRAS = ["S", "T", "Q", "Q", "S", "S", "D"];
 
 // porDia: { "2026-10-13": { count: 1, minutes: 45 } }
-export default function Heatmap({ porDia, hoje, selecionado, onSelecionar }) {
+export default function Heatmap({ porDia, hoje, selecionado, onSelecionar, planos = [] }) {
   const meses = mesesDaJanela();
 
   return (
@@ -36,13 +37,14 @@ export default function Heatmap({ porDia, hoje, selecionado, onSelecionar }) {
           let cor = "bg-surface text-mute";
           if (info) cor = forte ? "bg-ember text-ink" : "bg-ember/40 text-bone";
 
-          const futuro = iso > hoje ? "opacity-30" : "";
-          const anel =
-            iso === selecionado
-              ? "ring-2 ring-bone"
-              : iso === hoje
-              ? "ring-1 ring-mute"
-              : "";
+          const planejado = planosDoDia(planos, iso).length > 0;
+          const faltou = planejado && iso < hoje && !info;
+          const futuro = iso > hoje && !planejado ? "opacity-30" : "";
+          let anel = "";
+          if (iso === selecionado) anel = "ring-2 ring-bone";
+          else if (iso === hoje) anel = "ring-1 ring-mute";
+          else if (planejado && iso > hoje) anel = "ring-1 ring-ember/60";
+          else if (faltou) anel = "border border-dashed border-mute";
 
           celulas.push(
             <button

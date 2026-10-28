@@ -6,6 +6,8 @@ import { useAuth } from "@/components/AuthProvider";
 import Nav from "@/components/Nav";
 import HistoricoMensal from "@/components/HistoricoMensal";
 import GastosPorCategoria from "@/components/GastosPorCategoria";
+import CompararMeses from "@/components/CompararMeses";
+import LinhaTempoParcelas from "@/components/LinhaTempoParcelas";
 
 const CATEGORIAS = [
   "Mercado",
@@ -133,6 +135,7 @@ const fromVar = (r) => {
     categoria: r.category,
     sub: desc ? `${r.category} · ${data}` : data,
     valor: Number(r.amount),
+    data: r.spent_at,
   };
 };
 const fromGoal = (r) => ({ id: r.id, nome: r.name, alvo: Number(r.target) });
@@ -263,6 +266,7 @@ const EDIT_VAZIO = {
   atual: "",
   atualOrig: "",
   desc: "",
+  data: "",
   categoria: CATEGORIAS[0],
 };
 
@@ -271,6 +275,7 @@ export default function FinanceiroPage() {
   const [mesSel, setMesSel] = useState(() => mesAtualISO()); // mês que está sendo visto
   const [rendas, setRendas] = useState([]);
   const [fixos, setFixos] = useState([]);
+  const [histFixos, setHistFixos] = useState([]); // reajustes: {fixoId, valor, desde}
   const [pagos, setPagos] = useState([]); // ids dos fixos pagos no mês selecionado
   const [parcelas, setParcelas] = useState([]);
   const [pagosParc, setPagosParc] = useState([]); // ids das parcelas pagas no mês selecionado
@@ -293,6 +298,7 @@ export default function FinanceiroPage() {
   const [vDesc, setVDesc] = useState("");
   const [vCat, setVCat] = useState(CATEGORIAS[0]);
   const [vValor, setVValor] = useState("");
+  const [vData, setVData] = useState(""); // data do gasto variável novo
   const [lCat, setLCat] = useState(CATEGORIAS[0]);
   const [lValor, setLValor] = useState("");
   const [mNome, setMNome] = useState("");
@@ -300,6 +306,11 @@ export default function FinanceiroPage() {
   const [guardarValor, setGuardarValor] = useState({});
   const [historicoAberto, setHistoricoAberto] = useState({}); // { metaId: true }
   const [edit, setEdit] = useState(null); // item em edição (ou null)
+
+  // simulador de meta
+  const [sAlvo, setSAlvo] = useState("");
+  const [sJa, setSJa] = useState("");
+  const [sPrazo, setSPrazo] = useState("");
 
   // Conta as buscas ao banco: se o mês mudar no meio de uma busca,
   // a resposta antiga é ignorada
@@ -311,56 +322,61 @@ export default function FinanceiroPage() {
     const req = ++reqRef.current;
     const { ini, fim } = limitesDoMes(mesSel);
 
-    const [inc, fix, vars, gls, dps, ins, pay, ipay, lim] = await Promise.all([
-      supabase
-        .from("income")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: true }),
-      supabase
-        .from("fixed_expenses")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: true }),
-      supabase
-        .from("variable_expenses")
-        .select("*")
-        .eq("user_id", user.id)
-        .gte("spent_at", ini)
-        .lte("spent_at", fim)
-        .order("spent_at", { ascending: false })
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("goals")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: true }),
-      supabase
-        .from("goal_deposits")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: true }),
-      supabase
-        .from("installments")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: true }),
-      supabase
-        .from("fixed_payments")
-        .select("fixed_expense_id")
-        .eq("user_id", user.id)
-        .eq("ref_month", mesSel),
-      supabase
-        .from("installment_payments")
-        .select("installment_id")
-        .eq("user_id", user.id)
-        .eq("ref_month", mesSel),
-      supabase
-        .from("category_limits")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: true }),
-    ]);
+    const [inc, fix, vars, gls, dps, ins, pay, ipay, lim, hist] =
+      await Promise.all([
+        supabase
+          .from("income")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: true }),
+        supabase
+          .from("fixed_expenses")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: true }),
+        supabase
+          .from("variable_expenses")
+          .select("*")
+          .eq("user_id", user.id)
+          .gte("spent_at", ini)
+          .lte("spent_at", fim)
+          .order("spent_at", { ascending: false })
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("goals")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: true }),
+        supabase
+          .from("goal_deposits")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: true }),
+        supabase
+          .from("installments")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: true }),
+        supabase
+          .from("fixed_payments")
+          .select("fixed_expense_id")
+          .eq("user_id", user.id)
+          .eq("ref_month", mesSel),
+        supabase
+          .from("installment_payments")
+          .select("installment_id")
+          .eq("user_id", user.id)
+          .eq("ref_month", mesSel),
+        supabase
+          .from("category_limits")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: true }),
+        supabase
+          .from("fixed_expense_history")
+          .select("*")
+          .eq("user_id", user.id),
+      ]);
 
     // o mês mudou enquanto esperava: descarta essa resposta
     if (req !== reqRef.current) return;
@@ -392,6 +408,14 @@ export default function FinanceiroPage() {
     const pagosDb = (pay.data ?? []).map((r) => r.fixed_expense_id);
     const pagosParcDb = (ipay.data ?? []).map((r) => r.installment_id);
     const limitesDb = (lim.data ?? []).map(fromLimit);
+    // se a tabela de histórico não existir ainda, segue sem reajustes
+    const histDb = hist.error
+      ? []
+      : (hist.data ?? []).map((h) => ({
+          fixoId: h.fixed_expense_id,
+          valor: Number(h.amount),
+          desde: h.effective_from,
+        }));
 
     // Migração única: se o banco está vazio e existe algo salvo no aparelho
     // pela primeira versão, envia para o Supabase e limpa o local.
@@ -445,6 +469,7 @@ export default function FinanceiroPage() {
 
     setRendas(rendasDb);
     setFixos(fixosDb);
+    setHistFixos(histDb);
     setVariaveis(varsDb);
     setMetas(metasDb);
     setDepositos(depositosDb);
@@ -464,18 +489,29 @@ export default function FinanceiroPage() {
 
   function mudarMes(novo) {
     setEdit(null);
+    setVData("");
     setCarregado(false);
     setMesSel(novo);
   }
 
-  // Renda e fixos só aparecem a partir do mês em que foram criados
+  // Renda e fixos só aparecem a partir do mês em que foram criados.
+  // O fixo usa o valor vigente no mês (reajuste não muda o passado).
   const rendasMes = useMemo(
     () => rendas.filter((r) => r.desde <= mesSel),
     [rendas, mesSel]
   );
   const fixosMes = useMemo(
-    () => fixos.filter((f) => f.desde <= mesSel),
-    [fixos, mesSel]
+    () =>
+      fixos
+        .filter((f) => f.desde <= mesSel)
+        .map((f) => {
+          const hs = histFixos
+            .filter((h) => h.fixoId === f.id && h.desde <= mesSel)
+            .sort((a, b) => a.desde.localeCompare(b.desde));
+          const valor = hs.length ? hs[hs.length - 1].valor : f.valor;
+          return { ...f, valor, reajustado: hs.length > 0 };
+        }),
+    [fixos, histFixos, mesSel]
   );
 
   const totalRenda = useMemo(
@@ -677,6 +713,7 @@ export default function FinanceiroPage() {
       return;
     }
     setFixos((l) => l.filter((i) => i.id !== id));
+    setHistFixos((l) => l.filter((h) => h.fixoId !== id));
     setPagos((l) => l.filter((x) => x !== id));
   }
 
@@ -791,25 +828,30 @@ export default function FinanceiroPage() {
   async function addVariavel() {
     const valor = toNumber(vValor);
     if (valor <= 0) return;
-    const { data, error } = await supabase
-      .from("variable_expenses")
-      .insert({
-        user_id: user.id,
-        description: vDesc.trim() || null,
-        category: vCat,
-        amount: valor,
-        spent_at: dataParaNovo(mesSel),
-      })
-      .select()
-      .single();
+
+    const data = vData || dataParaNovo(mesSel);
+    const { ini, fim } = limitesDoMes(mesSel);
+    if (data < ini || data > fim) {
+      setErro("A data precisa estar dentro do mês que você está vendo.");
+      return;
+    }
+
+    const { error } = await supabase.from("variable_expenses").insert({
+      user_id: user.id,
+      description: vDesc.trim() || null,
+      category: vCat,
+      amount: valor,
+      spent_at: data,
+    });
     if (error) {
       setErro("Não foi possível salvar o gasto. Tente de novo.");
       return;
     }
     setErro("");
-    setVariaveis((l) => [fromVar(data), ...l]);
     setVDesc("");
     setVValor("");
+    setVData("");
+    loadData(); // recarrega para manter a ordem por data
   }
 
   async function removeVariavel(id) {
@@ -955,6 +997,7 @@ export default function FinanceiroPage() {
         desc: item.descricao || "",
         categoria: item.categoria,
         valor: valorParaCampo(item.valor),
+        data: item.data,
       });
     } else if (tipo === "parcela") {
       const atual = item.status === "ativa" ? String(item.numero) : "";
@@ -1006,9 +1049,11 @@ export default function FinanceiroPage() {
         return;
       }
       const dia = Math.min(31, Math.max(1, parseInt(edit.dia, 10) || 0)) || null;
+
+      // nome e dia mudam para sempre; o valor NÃO é sobrescrito
       const { data, error } = await supabase
         .from("fixed_expenses")
-        .update({ name: edit.nome.trim(), amount: valor, due_day: dia })
+        .update({ name: edit.nome.trim(), due_day: dia })
         .eq("id", id)
         .select()
         .single();
@@ -1017,26 +1062,55 @@ export default function FinanceiroPage() {
         return;
       }
       setFixos((l) => l.map((i) => (i.id === id ? fromFixed(data) : i)));
+
+      // se o valor mudou, grava no histórico a partir do mês que está sendo visto
+      const atual = fixosMes.find((f) => f.id === id);
+      if (atual && Math.abs(atual.valor - valor) > 0.001) {
+        const { error: e2 } = await supabase
+          .from("fixed_expense_history")
+          .upsert(
+            {
+              user_id: user.id,
+              fixed_expense_id: id,
+              amount: valor,
+              effective_from: mesSel,
+            },
+            { onConflict: "fixed_expense_id,effective_from" }
+          );
+        if (e2) {
+          setErro(msgSalvar);
+          return;
+        }
+        setHistFixos((l) => [
+          ...l.filter((h) => !(h.fixoId === id && h.desde === mesSel)),
+          { fixoId: id, valor, desde: mesSel },
+        ]);
+      }
     } else if (tipo === "variavel") {
       if (valor <= 0) {
         setErro("Informe um valor maior que zero.");
         return;
       }
-      const { data, error } = await supabase
+      const { ini, fim } = limitesDoMes(mesSel);
+      const dataGasto = edit.data || dataParaNovo(mesSel);
+      if (dataGasto < ini || dataGasto > fim) {
+        setErro("A data precisa estar dentro do mês que você está vendo.");
+        return;
+      }
+      const { error } = await supabase
         .from("variable_expenses")
         .update({
           description: edit.desc.trim() || null,
           category: edit.categoria,
           amount: valor,
+          spent_at: dataGasto,
         })
-        .eq("id", id)
-        .select()
-        .single();
+        .eq("id", id);
       if (error) {
         setErro(msgSalvar);
         return;
       }
-      setVariaveis((l) => l.map((i) => (i.id === id ? fromVar(data) : i)));
+      loadData(); // recarrega para manter a ordem por data
     } else if (tipo === "parcela") {
       if (!edit.nome.trim() || valor <= 0) {
         setErro("Preencha o nome e um valor maior que zero.");
@@ -1124,6 +1198,7 @@ export default function FinanceiroPage() {
     );
 
     if (edit.tipo === "variavel") {
+      const lim = limitesDoMes(mesSel);
       return (
         <div className="flex flex-wrap gap-2">
           <Campo
@@ -1132,6 +1207,15 @@ export default function FinanceiroPage() {
             value={edit.desc}
             onChange={(e) => setEd("desc", e.target.value)}
             onKeyDown={teclasEdicao}
+          />
+          <Campo
+            type="date"
+            className="basis-full"
+            value={edit.data}
+            min={lim.ini}
+            max={lim.fim}
+            onChange={(e) => setEd("data", e.target.value)}
+            aria-label="Data do gasto"
           />
           <Seletor
             className="basis-full"
@@ -1184,6 +1268,10 @@ export default function FinanceiroPage() {
             onChange={(e) => setEd("dia", e.target.value)}
             onKeyDown={teclasEdicao}
           />
+          <p className="basis-full text-xs text-mute">
+            Se mudar o valor, ele vale a partir de {rotuloMes(mesSel)}. Os meses
+            anteriores continuam com o valor antigo.
+          </p>
           {botoes}
         </div>
       );
@@ -1265,11 +1353,22 @@ export default function FinanceiroPage() {
   const dias = diasRestantesNoMes();
   const porDia = sobra > 0 ? sobra / dias : 0;
 
+  // simulador de meta
+  const simAlvo = toNumber(sAlvo);
+  const simJa = toNumber(sJa);
+  const simPrazo = parseInt(sPrazo, 10) || 0;
+  const simFalta = Math.max(0, simAlvo - simJa);
+  const simPorMes = simPrazo > 0 ? simFalta / simPrazo : 0;
+  const capacidade = sobra + guardadoNoMes; // sobra antes de guardar
+
+  const limMes = limitesDoMes(mesSel);
+
   const fixosOrdenados = [...fixosMes]
     .sort((a, b) => (a.dia || 99) - (b.dia || 99))
     .map((f) => {
       const partes = [];
       if (f.dia) partes.push(`vence dia ${f.dia}`);
+      if (f.reajustado) partes.push("reajustado");
       if (pagos.includes(f.id)) partes.push("pago");
       return { ...f, sub: partes.length ? partes.join(" · ") : null };
     });
@@ -1537,7 +1636,8 @@ export default function FinanceiroPage() {
                 </div>
               </div>
             </div>
-             <GastosPorCategoria          
+
+            <GastosPorCategoria
               userId={user.id}
               mesSel={mesSel}
               pronto={carregado && !erro}
@@ -1811,6 +1911,15 @@ export default function FinanceiroPage() {
                   value={vDesc}
                   onChange={(e) => setVDesc(e.target.value)}
                 />
+                <Campo
+                  type="date"
+                  className="basis-full"
+                  value={vData || dataParaNovo(mesSel)}
+                  min={limMes.ini}
+                  max={limMes.fim}
+                  onChange={(e) => setVData(e.target.value)}
+                  aria-label="Data do gasto"
+                />
                 <Seletor
                   className="basis-full"
                   value={vCat}
@@ -1838,6 +1947,59 @@ export default function FinanceiroPage() {
                   Adicionar
                 </button>
               </div>
+            </div>
+
+            <div className="rounded-lg border border-line bg-panel p-5">
+              <h2 className="text-xs tracking-wide text-mute uppercase mb-2">
+                Simulador de meta
+              </h2>
+              <div className="flex flex-wrap gap-2">
+                <Campo
+                  className="min-w-0 flex-1"
+                  placeholder="Valor alvo"
+                  inputMode="decimal"
+                  value={sAlvo}
+                  onChange={(e) => setSAlvo(e.target.value)}
+                />
+                <Campo
+                  className="min-w-0 flex-1"
+                  placeholder="Já tenho"
+                  inputMode="decimal"
+                  value={sJa}
+                  onChange={(e) => setSJa(e.target.value)}
+                />
+                <Campo
+                  className="w-24"
+                  placeholder="Meses"
+                  inputMode="numeric"
+                  value={sPrazo}
+                  onChange={(e) => setSPrazo(e.target.value)}
+                />
+              </div>
+              {simAlvo > 0 && simPrazo > 0 && (
+                <div className="mt-3 text-sm text-bone/90 leading-snug">
+                  <p>
+                    Guardar{" "}
+                    <strong className="text-bone">{brl(simPorMes)}</strong> por
+                    mês durante {simPrazo} meses.
+                  </p>
+                  <p className="mt-1 text-xs text-mute">
+                    {capacidade <= 0
+                      ? "Neste mês não há sobra para guardar."
+                      : simPorMes <= capacidade
+                      ? `Cabe: sua sobra deste mês (antes de guardar) é ${brl(
+                          capacidade
+                        )}.`
+                      : `Não cabe: faltam ${brl(
+                          simPorMes - capacidade
+                        )} por mês na sobra deste mês (${brl(
+                          capacidade
+                        )}). Com essa sobra, o prazo seria de ${Math.ceil(
+                          simFalta / capacidade
+                        )} meses.`}
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="rounded-lg border border-line bg-panel p-5">
@@ -1997,7 +2159,8 @@ export default function FinanceiroPage() {
             </div>
           </div>
         </div>
-                <div className="mt-4">
+
+        <div className="mt-4">
           <HistoricoMensal
             userId={user.id}
             mesSel={mesSel}
@@ -2009,6 +2172,15 @@ export default function FinanceiroPage() {
             guardado={guardadoNoMes}
             onEscolherMes={mudarMes}
           />
+        </div>
+
+        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+          <CompararMeses
+            userId={user.id}
+            mesSel={mesSel}
+            pronto={carregado && !erro}
+          />
+          <LinhaTempoParcelas parcelas={parcelas} mesSel={mesSel} />
         </div>
       </main>
     </div>
