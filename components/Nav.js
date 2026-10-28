@@ -7,6 +7,7 @@ import { useAuth } from "./AuthProvider";
 import { useModulos } from "./ModulosProvider";
 import { itensDoMenu } from "@/lib/modulos";
 import InstallButton from "./InstallButton";
+import { supabase } from "@/lib/supabaseClient";
 
 // Variáveis que o tema Personalizado aplica inline no <html>
 const CUSTOM_VARS = [
@@ -245,9 +246,35 @@ const ITEM_BASE =
 
 export default function Nav() {
   const pathname = usePathname();
-  const { signOut } = useAuth();
+  const { user, signOut } = useAuth();
   const { modulos } = useModulos();
   const [open, setOpen] = useState(false);
+  const [ehAdmin, setEhAdmin] = useState(false);
+  const [pendentes, setPendentes] = useState(0);
+
+  // Admin: descobre se é admin e conta os pedidos pendentes
+  useEffect(() => {
+    if (!user) return;
+    let cancelado = false;
+    async function checar() {
+      const ad = await supabase
+        .from("admins")
+        .select("user_id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (cancelado || !ad.data) return;
+      setEhAdmin(true);
+      const { count } = await supabase
+        .from("acessos")
+        .select("user_id", { count: "exact", head: true })
+        .eq("status", "pendente");
+      if (!cancelado) setPendentes(count || 0);
+    }
+    checar();
+    return () => {
+      cancelado = true;
+    };
+  }, [user, pathname]);
 
   // Itens do menu: "Hoje" sempre + os módulos que a pessoa escolheu
   const links = itensDoMenu(modulos);
@@ -318,6 +345,14 @@ export default function Nav() {
           <div>
             <InstallButton />
           </div>
+          {ehAdmin && (
+            <Link
+              href="/admin"
+              className="text-mute hover:text-bone text-sm transition-colors"
+            >
+              Admin{pendentes > 0 ? ` (${pendentes})` : ""}
+            </Link>
+          )}
           <Link
             href="/personalizar"
             className="text-mute hover:text-bone text-sm transition-colors"
@@ -425,6 +460,19 @@ export default function Nav() {
               <div className="px-3">
                 <InstallButton />
               </div>
+              {ehAdmin && (
+                <Link
+                  href="/admin"
+                  className={`${ITEM_BASE} ${
+                    isActive(pathname, "/admin")
+                      ? "bg-emberSoft text-ember"
+                      : "text-mute hover:text-bone"
+                  }`}
+                >
+                  <NavIcon name="settings" />
+                  Admin{pendentes > 0 ? ` (${pendentes})` : ""}
+                </Link>
+              )}
               <Link
                 href="/personalizar"
                 className={`${ITEM_BASE} ${

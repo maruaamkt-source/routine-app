@@ -15,6 +15,7 @@ import {
 import "./globals.css";
 import { AuthProvider } from "@/components/AuthProvider";
 import { ModulosProvider } from "@/components/ModulosProvider";
+import AcessoGate from "@/components/AcessoGate";
 
 // Fontes originais do app (título da Nav usa essas)
 const fraunces = Fraunces({
@@ -229,7 +230,9 @@ export default function RootLayout({ children }) {
         <div className="grain" />
         <div className="relative z-10">
           <AuthProvider>
-            <ModulosProvider>{children}</ModulosProvider>
+            <AcessoGate>
+              <ModulosProvider>{children}</ModulosProvider>
+            </AcessoGate>
           </AuthProvider>
         </div>
       </body>
