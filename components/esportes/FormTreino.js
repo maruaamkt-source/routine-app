@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { todayISO } from "@/lib/dateUtils";
 import { checarRecordes } from "@/lib/recordesUtils";
 import { GRUPOS } from "@/lib/gruposMusculares";
+import { carregarCatalogo, grupoDoCatalogo } from "@/lib/catalogo";
+import SugestoesExercicio, { useToque } from "@/components/esportes/SugestoesExercicio";
 import {
   TIPOS,
   temExercicios,
@@ -84,6 +86,27 @@ grupo: e.muscle_group || "",
   );
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const [catalogo, setCatalogo] = useState([]);
+  const toque = useToque();
+  const [foco, setFoco] = useState(null);
+
+  useEffect(() => {
+    let cancelado = false;
+    carregarCatalogo().then((lista) => {
+      if (!cancelado) setCatalogo(lista);
+    });
+    return () => {
+      cancelado = true;
+    };
+  }, []);
+
+  const opcoesNomes = useMemo(() => {
+    const vistos = new Set(nomes.map((n) => n.toLowerCase()));
+    const extras = catalogo
+      .filter((c) => !vistos.has(c.nome.toLowerCase()))
+      .map((c) => c.nome);
+    return [...nomes, ...extras];
+  }, [nomes, catalogo]);
 
   // Na edição: busca os exercícios que o treino já tinha
   useEffect(() => {
@@ -93,7 +116,7 @@ grupo: e.muscle_group || "",
     async function buscar() {
       const { data, error } = await supabase
         .from("workout_exercises")
-        .select("id, name, sets, reps, weight_kg, position, muscle_group")
+        .select("id, name, sets, reps, weight_kg, position, muscle_group, rir, por_tempo, aquecimento")
         .eq("workout_id", editando.id)
         .eq("user_id", user.id)
         .order("position");
@@ -109,6 +132,9 @@ grupo: e.muscle_group || "",
       if (lista.length > 0) {
         setExercicios(
           lista.map((e) => ({
+            aquecimento: !!e.aquecimento,
+            porTempo: !!e.por_tempo,
+            rir: e.rir != null ? String(e.rir) : "",
             id: proximoId(),
             nome: e.name,
             nome: e.name,
@@ -152,6 +178,15 @@ grupo: e.muscle_group || "",
     const canonico = nomes.find((n) => n.toLowerCase() === digitado.toLowerCase());
     if (!canonico) {
       atualizar(id, { ultima: "" });
+      const doCatalogo = catalogo.find(
+        (c) => c.nome.toLowerCase() === digitado.toLowerCase()
+      );
+      const gc = doCatalogo ? grupoDoCatalogo(doCatalogo) : "";
+      if (gc) {
+        setExercicios((prev) =>
+          prev.map((e) => (e.id === id && !e.grupo ? { ...e, grupo: gc } : e))
+        );
+      }
       return;
     }
     if (canonico !== digitado) atualizar(id, { nome: canonico });
@@ -165,9 +200,10 @@ grupo: e.muscle_group || "",
 
     const { data, error } = await supabase
       .from("workout_exercises")
-      .select("sets, reps, weight_kg, created_at")
+      .select("sets, reps, weight_kg, created_at, por_tempo")
       .eq("user_id", user.id)
       .eq("name", canonico)
+      .eq("aquecimento", false)
       .order("created_at", { ascending: false })
       .limit(1);
 
@@ -185,7 +221,7 @@ grupo: e.muscle_group || "",
     }
     const { data, error } = await supabase
       .from("workout_exercises")
-      .select("name, sets, reps, weight_kg, position, muscle_group")
+      .select("name, sets, reps, weight_kg, position, muscle_group, rir, por_tempo, aquecimento")
       .eq("workout_id", anterior.id)
       .eq("user_id", user.id)
       .order("position");
@@ -200,6 +236,9 @@ grupo: e.muscle_group || "",
     }
     setExercicios(
       data.map((e) => ({
+        aquecimento: !!e.aquecimento,
+        porTempo: !!e.por_tempo,
+        rir: e.rir != null ? String(e.rir) : "",
         id: proximoId(),
         nome: e.name,
         nome: e.name,
@@ -241,8 +280,10 @@ grupo: e.muscle_group || "",
         const s = parseInt(ex.series, 10);
         const r = parseInt(ex.reps, 10);
         const c = ex.carga.trim() === "" ? 0 : paraNumero(ex.carga);
-        if (!(s >= 1) || !(r >= 1) || Number.isNaN(c) || c < 0) {
-          setErro(`Confira séries, repetições e carga de "${ex.nome.trim()}".`);
+        const rirTxt = String(ex.rir ?? "").trim();
+        const rir = rirTxt === "" ? null : parseInt(rirTxt, 10);
+        if (!(s >= 1) || !(r >= 1) || Number.isNaN(c) || c < 0 || (rir !== null && !(rir >= 0 && rir <= 10))) {
+          setErro(`Confira séries, repetições, carga e RIR de "${ex.nome.trim()}".`);
           return null;
         }
         lista.push({
@@ -251,7 +292,10 @@ grupo: e.muscle_group || "",
           reps: r,
           weight_kg: c,
           muscle_group: ex.grupo || null,
-          position: lista.length,
+          rir,
+          por_tempo: !!ex.porTempo,
+          aquecimento: !!ex.aquecimento,
+          position: lista.length, 
         });
       }
     }
@@ -266,7 +310,10 @@ grupo: e.muscle_group || "",
 
     setSalvando(true);
 
-    const prs = await checarRecordes(user.id, lista);
+    const prs = await checarRecordes(
+      user.id,
+      lista.filter((l) => !l.aquecimento)
+    );
 
     const { data: treino, error: erroTreino } = await supabase
       .from("workouts")
@@ -481,7 +528,7 @@ grupo: e.muscle_group || "",
           </div>
 
           <datalist id="nomes-exercicios">
-            {nomes.map((n) => (
+            {opcoesNomes.map((n) => (
               <option key={n} value={n} />
             ))}
           </datalist>
@@ -494,15 +541,42 @@ grupo: e.muscle_group || "",
                 {exercicios.map((ex) => (
                   <div key={ex.id} className="rounded-lg border border-line bg-surface p-3">
                     <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        list="nomes-exercicios"
-                        value={ex.nome}
-                        onChange={(e) => atualizar(ex.id, { nome: e.target.value, ultima: "" })}
-                        onBlur={(e) => buscarUltima(ex.id, e.target.value)}
-                        placeholder="Nome do exercício"
-                        className={INPUT}
-                      />
+                      <div className="relative min-w-0 flex-1">
+                        <input
+                          type="text"
+                          list={toque ? undefined : "nomes-exercicios"}
+                          value={ex.nome}
+                          onFocus={() => setFoco(ex.id)}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            atualizar(ex.id, { nome: v, ultima: "" });
+                            if (
+                              toque &&
+                              opcoesNomes.some(
+                                (o) => o.toLowerCase() === v.trim().toLowerCase()
+                              )
+                            )
+                              buscarUltima(ex.id, v);
+                          }}
+                          onBlur={(e) => {
+                            setFoco(null);
+                            buscarUltima(ex.id, e.target.value);
+                          }}
+                          placeholder="Nome do exercício"
+                          className={INPUT}
+                        />
+                        {toque && foco === ex.id && (
+                          <SugestoesExercicio
+                            valor={ex.nome}
+                            opcoes={opcoesNomes}
+                            onEscolher={(n) => {
+                              atualizar(ex.id, { nome: n, ultima: "" });
+                              setFoco(null);
+                              buscarUltima(ex.id, n);
+                            }}
+                          />
+                        )}
+                      </div>
                       <button
                         type="button"
                         onClick={() => removerExercicio(ex.id)}
@@ -525,7 +599,23 @@ grupo: e.muscle_group || "",
                         </option>
                       ))}
                     </select>
-                    <div className="mt-2 grid grid-cols-3 gap-2">
+                    <label className="mt-2 flex items-center gap-2 text-xs text-mute">
+                      <input
+                        type="checkbox"
+                        checked={!!ex.porTempo}
+                        onChange={(e) => atualizar(ex.id, { porTempo: e.target.checked })}
+                      />
+                      Por tempo (segundos em vez de reps)
+                    </label>
+                    <label className="mt-2 flex items-center gap-2 text-xs text-mute">
+                      <input
+                        type="checkbox"
+                        checked={!!ex.aquecimento}
+                        onChange={(e) => atualizar(ex.id, { aquecimento: e.target.checked })}
+                      />
+                      Aquecimento (não conta como série de trabalho)
+                    </label>
+                    <div className="mt-2 grid grid-cols-4 gap-2">
                       <div>
                         <label className={LABEL}>Séries</label>
                         <input
@@ -538,7 +628,7 @@ grupo: e.muscle_group || "",
                         />
                       </div>
                       <div>
-                        <label className={LABEL}>Reps</label>
+                        <label className={LABEL}>{ex.porTempo ? "Seg" : "Reps"}</label>
                         <input
                           type="number"
                           inputMode="numeric"
@@ -556,6 +646,19 @@ grupo: e.muscle_group || "",
                           value={ex.carga}
                           onChange={(e) => atualizar(ex.id, { carga: e.target.value })}
                           placeholder="22,5"
+                          className={INPUT}
+                        />
+                      </div>
+                      <div>
+                        <label className={LABEL}>RIR</label>
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          min="0"
+                          max="10"
+                          value={ex.rir ?? ""}
+                          onChange={(e) => atualizar(ex.id, { rir: e.target.value })}
+                          placeholder="2"
                           className={INPUT}
                         />
                       </div>

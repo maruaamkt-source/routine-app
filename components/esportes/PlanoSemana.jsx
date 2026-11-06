@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { todayISO, toISODate } from "@/lib/dateUtils";
 import { TIPOS, temExercicios, temKm, paraNumero } from "@/lib/esportesUtils";
 import { GRUPOS } from "@/lib/gruposMusculares";
+import SugestoesExercicio, { useToque } from "@/components/esportes/SugestoesExercicio";
 
 const DIAS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 
@@ -52,6 +53,8 @@ export default function PlanoSemana({
 }) {
   const [form, setForm] = useState(null);
   const [salvando, setSalvando] = useState(false);
+  const toque = useToque();
+  const [foco, setFoco] = useState(null);
 
   const hoje = todayISO();
   const semana = semanaAtual();
@@ -234,7 +237,10 @@ export default function PlanoSemana({
                         const podeMarcar = !ok && dia <= hoje;
                         const ocupado = registrando === p.id + dia;
                         return (
-                          <div key={p.id} className="flex items-center justify-between gap-3">
+                          <div
+                            key={p.id}
+                            className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
+                          >
                             <span className="min-w-0 truncate text-sm text-bone">
                               {p.name}
                               <span className="text-mute"> · {p.type}</span>
@@ -242,7 +248,7 @@ export default function PlanoSemana({
                             {ok ? (
                               <span className="shrink-0 text-xs text-ember">Feito ✓</span>
                             ) : podeMarcar ? (
-                              <span className="flex shrink-0 items-center gap-3">
+                              <span className="flex flex-wrap items-center gap-3 sm:shrink-0 sm:flex-nowrap">
                                 {temExercicios(p.type) && (p.exercises || []).length > 0 && (
                                   <button
                                     type="button"
@@ -449,20 +455,35 @@ export default function PlanoSemana({
                 {form.exercises.map((e, idx) => (
                   <div key={idx} className="rounded-lg border border-line bg-surface p-3">
                     <div className="flex items-center gap-2">
-                      <input
-                        className={INPUT}
-                        list="nomes-exercicios-plano"
-                        placeholder="Nome do exercício"
-                        value={e.name}
-                        onChange={(ev) => setExercicio(idx, "name", ev.target.value)}
-                        onBlur={(ev) => {
-                          const nm = ev.target.value.trim().toLowerCase();
-                          const canon = Object.keys(grupos).find(
-                            (k) => k.toLowerCase() === nm
-                          );
-                          if (canon && !e.grupo) setExercicio(idx, "grupo", grupos[canon]);
-                        }}
-                      />
+                      <div className="relative min-w-0 flex-1">
+                        <input
+                          className={INPUT}
+                          list={toque ? undefined : "nomes-exercicios-plano"}
+                          placeholder="Nome do exercício"
+                          value={e.name}
+                          onFocus={() => setFoco(idx)}
+                          onChange={(ev) => setExercicio(idx, "name", ev.target.value)}
+                          onBlur={(ev) => {
+                            setFoco(null);
+                            const nm = ev.target.value.trim().toLowerCase();
+                            const canon = Object.keys(grupos).find(
+                              (k) => k.toLowerCase() === nm
+                            );
+                            if (canon && !e.grupo) setExercicio(idx, "grupo", grupos[canon]);
+                          }}
+                        />
+                        {toque && foco === idx && (
+                          <SugestoesExercicio
+                            valor={e.name}
+                            opcoes={Object.keys(grupos)}
+                            onEscolher={(n) => {
+                              setExercicio(idx, "name", n);
+                              if (grupos[n] && !e.grupo) setExercicio(idx, "grupo", grupos[n]);
+                              setFoco(null);
+                            }}
+                          />
+                        )}
+                      </div>
                       <button
                         type="button"
                         onClick={() => removerExercicio(idx)}

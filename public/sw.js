@@ -1,3 +1,72 @@
+const VERSAO = 'v1';
+const CACHE = 'routine-' + VERSAO;
+const SHELL = ['/offline.html', '/manifest.json', '/icon.png', '/icon-192.png'];
+
+self.addEventListener('install', function (event) {
+  event.waitUntil(
+    caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())
+  );
+});
+
+self.addEventListener('activate', function (event) {
+  event.waitUntil(
+    caches
+      .keys()
+      .then((keys) =>
+        Promise.all(
+          keys.filter((k) => k.startsWith('routine-') && k !== CACHE).map((k) => caches.delete(k))
+        )
+      )
+      .then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener('fetch', function (event) {
+  const req = event.request;
+  if (req.method !== 'GET') return;
+
+  const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return; // Supabase e outros: passa direto
+
+  // Abrir página: rede primeiro, cache se falhar, senão /offline.html
+  if (req.mode === 'navigate') {
+    event.respondWith(
+      fetch(req)
+        .then((res) => {
+          if (res.ok) {
+            const copia = res.clone();
+            caches.open(CACHE).then((c) => c.put(req, copia));
+          }
+          return res;
+        })
+        .catch(() =>
+          caches.match(req).then((r) => r || caches.match('/offline.html'))
+        )
+    );
+    return;
+  }
+
+  // Estáticos: cache primeiro
+  if (
+    url.pathname.startsWith('/_next/static/') ||
+    /\.(png|svg|ico|woff2?|css|js)$/.test(url.pathname) ||
+    url.pathname === '/manifest.json'
+  ) {
+    event.respondWith(
+      caches.match(req).then(
+        (r) =>
+          r ||
+          fetch(req).then((res) => {
+            if (res.ok) {
+              const copia = res.clone();
+              caches.open(CACHE).then((c) => c.put(req, copia));
+            }
+            return res;
+          })
+      )
+    );
+  }
+});
 self.addEventListener('push', function (event) {
   let data = {};
   try {

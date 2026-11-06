@@ -25,7 +25,7 @@ export default function CardHoje({
           return (
             <li
               key={p.id}
-              className="flex items-center justify-between gap-3 rounded-lg border border-line bg-surface px-4 py-3"
+              className="flex flex-col gap-3 rounded-lg border border-line bg-surface px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
             >
               <span className="min-w-0">
                 <span className="block truncate text-sm text-bone">{p.name}</span>
@@ -37,7 +37,7 @@ export default function CardHoje({
               {ok ? (
                 <span className="shrink-0 text-xs text-ember">Feito ✓</span>
               ) : (
-                <span className="flex shrink-0 items-center gap-3">
+                <span className="flex flex-wrap items-center gap-3 sm:shrink-0 sm:flex-nowrap">
                   {temExercicios(p.type) && (p.exercises || []).length > 0 && (
                     <button
                       type="button"

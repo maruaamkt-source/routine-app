@@ -20,6 +20,7 @@ import PlanoSemana from "@/components/esportes/PlanoSemana";
 import CardHoje from "@/components/esportes/CardHoje";
 import LembreteTreino from "@/components/esportes/LembreteTreino";
 import FotoObjetivo from "@/components/esportes/FotoObjetivo";
+import GuiaTermos from "@/components/esportes/GuiaTermos";
 import TreinoAtivo, {
   CHAVE_ATIVO,
   lerAtivoSalvo,
@@ -282,7 +283,7 @@ export default function EsportesPage() {
   async function buscarExercicios(t) {
     const { data, error } = await supabase
       .from("workout_exercises")
-      .select("id, name, sets, reps, weight_kg, position")
+      .select("id, name, sets, reps, weight_kg, position, por_tempo, aquecimento")  
       .eq("workout_id", t.id)
       .eq("user_id", user.id)
       .order("position");
@@ -563,6 +564,7 @@ export default function EsportesPage() {
               { id: "treinos", label: "Treinos" },
               { id: "plano", label: "Plano" },
               { id: "evolucao", label: "Evolução" },
+              { id: "guia", label: "Guia" },
             ].map((a) => (
               <button
                 key={a.id}
@@ -583,6 +585,8 @@ export default function EsportesPage() {
             <p className="text-sm text-mute">Carregando...</p>
           ) : aba === "evolucao" ? (
             <Evolucao user={user} nomes={nomes} />
+          ) : aba === "guia" ? (
+            <GuiaTermos />
           ) : aba === "plano" ? (
             <PlanoSemana
               user={user}
